@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Аудитор — базовая вёрстка v2</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f7f8;
+    --text: #111114;
+    --muted: #8a8a8e;
+    --line: #e4e4e8;
+    --line-strong: #d0d0d5;
+    --accent: #0a84ff;
+    --danger: #ff3b30;
+    --star: #f5a623;
+    --radius: 8px;
+    --tap: 46px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000; --surface: #131315; --text: #f2f2f7; --muted: #86868b;
+      --line: #2a2a2c; --line-strong: #3a3a3c; --accent: #0a84ff; --danger: #ff453a; --star: #ffb340;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #000; --surface: #131315; --text: #f2f2f7; --muted: #86868b;
+    --line: #2a2a2c; --line-strong: #3a3a3c; --accent: #0a84ff; --danger: #ff453a; --star: #ffb340;
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff; --surface: #f7f7f8; --text: #111114; --muted: #8a8a8e;
+    --line: #e4e4e8; --line-strong: #d0d0d5; --accent: #0a84ff; --danger: #ff3b30; --star: #f5a623;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #3a3a3c;
+    font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    padding: 16px; min-height: 100vh;
+  }
+
+  /* --- Демо-хром (только для макета) --- */
+  .demo-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
+    background: #2c2c2e; color: #fff; padding: 8px 10px; border-radius: 10px; max-width: 100%; }
+  .demo-bar b { font-size: 12px; opacity: .6; margin-right: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .demo-bar button { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+    border: 1px solid #48484a; background: #3a3a3c; color: #fff; }
+  .demo-bar button.active { background: var(--accent); border-color: var(--accent); }
+  .demo-note { color: #d0d0d5; font-size: 12px; max-width: 390px; text-align: center; }
+
+  /* --- Рамка телефона --- */
+  .phone { width: 390px; max-width: 100%; height: 800px; max-height: 86vh;
+    background: var(--bg); border-radius: 26px; overflow: hidden; position: relative;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; }
+
+  /* ================= БАЗОВЫЙ КАРКАС ================= */
+  .screen { display: none; flex-direction: column; height: 100%; }
+  .screen.active { display: flex; }
+
+  .screen__header { position: sticky; top: 0; z-index: 5;
+    display: grid; grid-template-columns: 56px 1fr auto; align-items: center;
+    min-height: 50px; padding: 8px 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .screen__back { grid-column: 1; justify-self: start; border: none; background: none; color: var(--accent);
+    font-size: 24px; line-height: 1; padding: 4px 10px; cursor: pointer; }
+  .screen__title { grid-column: 2; text-align: center; font-size: 16px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .screen__hactions { grid-column: 3; justify-self: end; display: flex; gap: 2px; padding-right: 4px; }
+  .iconbtn { border: none; background: none; color: var(--accent); font-size: 19px;
+    width: 40px; height: 40px; border-radius: 8px; cursor: pointer; display: inline-grid; place-items: center; }
+  .iconbtn:active { background: var(--surface); }
+
+  .screen__content { flex: 1; overflow-y: auto; padding: 8px 16px 8px; }
+
+  .screen__footer { position: sticky; bottom: 0; z-index: 5;
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    background: var(--bg); border-top: 1px solid var(--line); }
+  .search { flex: 1; position: relative; display: flex; align-items: center; }
+  .search::before { content: "⌕"; position: absolute; left: 10px; color: var(--muted); font-size: 30px; font-weight: 700; }
+  .search input { width: 100%; height: var(--tap); border: 1px solid var(--line-strong); background: var(--surface);
+    color: var(--text); border-radius: var(--radius); padding: 0 32px 0 42px; font: inherit; }
+  .search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .search .clear { position: absolute; right: 8px; width: 22px; height: 22px; border-radius: 50%;
+    border: none; background: var(--line-strong); color: var(--bg); cursor: pointer; display: none; place-items: center; font-size: 13px; }
+  .search.has-text .clear { display: grid; }
+  .btn-add { height: var(--tap); padding: 0 18px; border: none; border-radius: var(--radius);
+    background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+
+  /* ================= ПОЛЕ ИМЕНИ + УДАЛЕНИЕ ================= */
+  .field { margin: 10px 0 6px; }
+  .field > label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .05em; margin: 0 0 5px 2px; }
+  .namebar { display: flex; align-items: center; gap: 8px; }
+  .namebar input { flex: 1; height: 44px; border: 1px solid var(--line-strong); background: var(--bg);
+    color: var(--text); border-radius: var(--radius); padding: 0 12px; font: inherit; font-size: 16px; }
+  .namebar input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .del { flex-shrink: 0; width: 44px; height: 44px; border: none; background: none;
+    color: var(--danger); font-size: 19px; cursor: pointer; border-radius: var(--radius); }
+  .del:hover, .del:active { background: var(--surface); }
+
+  /* ================= СПИСКИ / СТРОКИ (плоский вид) ================= */
+  .section-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 18px 0 2px; }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .row { display: flex; align-items: center; gap: 12px; min-height: var(--tap);
+    padding: 11px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .row:active { background: var(--surface); }
+  .row__handle { color: var(--muted); font-size: 17px; cursor: grab; user-select: none; }
+  .row__main { flex: 1; min-width: 0; }
+  .row__title { font-size: 15px; overflow-wrap: anywhere; }
+  .row__sub { font-size: 13px; color: var(--muted); margin-top: 1px; }
+  .count { flex-shrink: 0; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .chev { color: var(--text); font-size: 34px; width: 24px; line-height: 1; transition: transform .15s; }
+
+  .row--category { padding-left: 0; }
+  .row--category .row__title { font-weight: 600; }
+
+  .row--remark { align-items: flex-start; padding-left: 4px; }
+  .check { width: 21px; height: 21px; border-radius: 5px; border: 2px solid var(--line-strong);
+    flex-shrink: 0; margin-top: 1px; display: inline-grid; place-items: center; color: #fff; font-size: 13px; }
+  .row--remark.checked .check { background: var(--accent); border-color: var(--accent); }
+  .row--remark .row__title { font-size: 15px; }
+  .star { flex-shrink: 0; color: var(--star); font-size: 14px; margin-top: 2px; }
+
+  .remark-group { display: none; }
+  .remark-group.open { display: block; }
+
+  /* ================= МОДАЛКА ================= */
+  .modal-back { position: absolute; inset: 0; background: rgba(0,0,0,.4); display: none;
+    align-items: flex-end; z-index: 20; }
+  .modal-back.open { display: flex; }
+  .modal { background: var(--bg); width: 100%; max-height: 92%; border-radius: 16px 16px 0 0;
+    display: flex; flex-direction: column; overflow: hidden; }
+  .modal__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px;
+    border-bottom: 1px solid var(--line); }
+  .modal__head b { font-size: 16px; }
+  .modal__head button { border: none; background: none; color: var(--accent); font: inherit; font-size: 15px; cursor: pointer; }
+  .modal__body { padding: 14px 16px; overflow-y: auto; }
+  .mlabel { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 5px; }
+  .mlabel:first-child { margin-top: 0; }
+  .modal textarea, .modal .cat-input { width: 100%; border: 1px solid var(--line-strong); background: var(--surface);
+    color: var(--text); border-radius: var(--radius); padding: 10px 12px; font: inherit; font-size: 15px; }
+  .modal textarea { min-height: 66px; resize: vertical; }
+  .checks { border-top: 1px solid var(--line); }
+  .checks label { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); font-size: 15px; cursor: pointer; }
+  .checks input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .modal__foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line);
+    display: flex; gap: 10px; align-items: center; }
+  .modal__foot .save { flex: 1; height: var(--tap); border: none; border-radius: var(--radius);
+    background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  .modal__foot .delete { height: var(--tap); padding: 0 16px; border: 1px solid var(--danger); border-radius: var(--radius);
+    background: none; color: var(--danger); font: inherit; cursor: pointer; }
+
+  /* ================= ALERT / DIALOG (по центру) ================= */
+  .alert-back { position: absolute; inset: 0; background: rgba(0,0,0,.4); display: none;
+    align-items: center; justify-content: center; padding: 24px; z-index: 30; }
+  .alert-back.open { display: flex; }
+  .alert { background: var(--bg); border-radius: 14px; width: 100%; max-width: 320px; overflow: hidden; }
+  .alert__body { padding: 18px; }
+  .alert__body.center { text-align: center; }
+  .alert__body b { display: block; font-size: 16px; margin-bottom: 6px; }
+  .alert__body p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.4; }
+  .alert__acts { display: flex; border-top: 1px solid var(--line); }
+  .alert__acts button { flex: 1; height: 47px; border: none; background: none; font: inherit; font-size: 15px;
+    cursor: pointer; color: var(--accent); }
+  .alert__acts button:active { background: var(--surface); }
+  .alert__acts button + button { border-left: 1px solid var(--line); }
+  .alert__acts .danger { color: var(--danger); font-weight: 600; }
+
+  /* обновление каталога */
+  .spin { width: 26px; height: 26px; border: 3px solid var(--line-strong); border-top-color: var(--accent);
+    border-radius: 50%; margin: 4px auto 12px; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .upd-errs { margin-top: 12px; }
+  .upd-errs .mlabel { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .upd-errs ul { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+  .upd-errs li { font-size: 13px; padding: 8px 2px; border-bottom: 1px solid var(--line); color: var(--danger); }
+  .ok-badge { color: #34c759; font-size: 15px; font-weight: 600; }
+  .hl { background: rgba(245,166,35,.35); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <b>Экран</b>
+  <button data-goto="audits" class="active">Аудиты</button>
+  <button data-goto="myremarks">Мои замечания</button>
+  <button data-goto="audit">Аудит</button>
+  <button data-goto="building">Здание</button>
+  <button data-goto="room">Помещение</button>
+  <button data-goto="panel">Щит</button>
+  <span style="width:8px"></span>
+  <b>Тема</b>
+  <button data-theme-set="light">☀︎</button>
+  <button data-theme-set="dark">☾</button>
+</div>
+<div class="demo-note">v2: минимализм, заголовок по центру, ↻/★ на главном, удаление у поля имени,
+поиск-инпут снизу, ★ у пользовательских замечаний, экран «Мои замечания», модалка замечания
+(нажми «Добавить» на экране щита или «Мои замечания»).</div>
+
+<div class="phone">
+
+  <!-- 1. СПИСОК АУДИТОВ -->
+  <section class="screen active" id="s-audits">
+    <header class="screen__header">
+      <span></span>
+      <div class="screen__title">АУДИТОР</div>
+      <div class="screen__hactions">
+        <button class="iconbtn" title="Мои замечания" data-goto="myremarks">★</button>
+        <button class="iconbtn" title="Обновить каталог">↻</button>
+      </div>
+    </header>
+    <div class="screen__content">
+      <ul class="list">
+        <li class="row" data-goto="audit"><div class="row__main"><div class="row__title">Театр Оперы и Балета</div><div class="row__sub">2 дня назад</div></div><span class="count">27</span></li>
+        <li class="row" data-goto="audit"><div class="row__main"><div class="row__title">Автозаправка</div><div class="row__sub">5 дней назад</div></div><span class="count">7</span></li>
+        <li class="row" data-goto="audit"><div class="row__main"><div class="row__title">Цирк</div><div class="row__sub">17 июля 2026</div></div><span class="count">315</span></li>
+      </ul>
+    </div>
+    <footer class="screen__footer">
+      <span class="search"><input placeholder="Поиск"><button class="clear">✕</button></span>
+      <button class="btn-add">Добавить</button>
+    </footer>
+  </section>
+
+  <!-- 2. МОИ ЗАМЕЧАНИЯ -->
+  <section class="screen" id="s-myremarks">
+    <header class="screen__header">
+      <button class="screen__back" data-goto="audits">‹</button>
+      <div class="screen__title">Мои замечания</div>
+      <span class="screen__hactions"></span>
+    </header>
+    <div class="screen__content">
+      <ul class="list"><li class="row row--category open" data-cat="m1"><span class="chev" style="transform:rotate(90deg)">▸</span><div class="row__main"><div class="row__title">Электрика</div></div><span class="count">2</span></li></ul>
+      <div class="remark-group open" data-group="m1"><ul class="list">
+        <li class="row row--remark" data-modal="edit"><div class="row__main"><div class="row__title">Нет выключателя по ГОСТ 1234-56-78</div></div></li>
+        <li class="row row--remark" data-modal="edit"><div class="row__main"><div class="row__title">Полить фикус слева от входа</div></div></li>
+      </ul></div>
+      <ul class="list"><li class="row row--category" data-cat="m2"><span class="chev">▸</span><div class="row__main"><div class="row__title">Прочее</div></div><span class="count">1</span></li></ul>
+      <div class="remark-group" data-group="m2"><ul class="list">
+        <li class="row row--remark" data-modal="edit"><div class="row__main"><div class="row__title">Замечание от пользователя</div></div></li>
+      </ul></div>
+    </div>
+    <footer class="screen__footer">
+      <span class="search"><input placeholder="Поиск"><button class="clear">✕</button></span>
+      <button class="btn-add" data-modal="new">Добавить</button>
+    </footer>
+  </section>
+
+  <!-- 3. АУДИТ -->
+  <section class="screen" id="s-audit">
+    <header class="screen__header"><button class="screen__back" data-goto="audits">‹</button><div class="screen__title">АУДИТ</div><span class="screen__hactions"></span></header>
+    <div class="screen__content">
+      <div class="field"><label>Название</label><div class="namebar"><input value="Театр Оперы и Балета"><button class="del" title="Удалить">🗑</button></div></div>
+      <div class="section-label">Здания</div>
+      <ul class="list">
+        <li class="row" data-goto="building"><span class="row__handle">⠿</span><div class="row__main"><div class="row__title">Гараж</div></div><span class="count">18</span></li>
+        <li class="row" data-goto="building"><span class="row__handle">⠿</span><div class="row__main"><div class="row__title">Основное здание</div></div><span class="count">9</span></li>
+      </ul>
+    </div>
+    <footer class="screen__footer"><span class="search"><input placeholder="Поиск"><button class="clear">✕</button></span><button class="btn-add">Добавить</button></footer>
+  </section>
+
+  <!-- 4. ЗДАНИЕ -->
+  <section class="screen" id="s-building">
+    <header class="screen__header"><button class="screen__back" data-goto="audit">‹</button><div class="screen__title">ЗДАНИЕ</div><span class="screen__hactions"></span></header>
+    <div class="screen__content">
+      <div class="field"><label>Название</label><div class="namebar"><input value="Гараж"><button class="del" title="Удалить">🗑</button></div></div>
+      <ul class="list">
+        <li class="row" data-goto="room"><div class="row__main"><div class="row__title">Документация</div></div><span class="count">8</span></li>
+        <li class="row" data-goto="room"><div class="row__main"><div class="row__title">Общее</div></div><span class="count">5</span></li>
+      </ul>
+      <div class="section-label">Помещение</div>
+      <ul class="list">
+        <li class="row" data-goto="room"><span class="row__handle">⠿</span><div class="row__main"><div class="row__title">Основное строение</div></div><span class="count">3</span></li>
+        <li class="row" data-goto="room"><span class="row__handle">⠿</span><div class="row__main"><div class="row__title">Подвал</div></div><span class="count">2</span></li>
+      </ul>
+    </div>
+    <footer class="screen__footer"><span class="search"><input placeholder="Поиск"><button class="clear">✕</button></span><button class="btn-add">Добавить</button></footer>
+  </section>
+
+  <!-- 5. ПОМЕЩЕНИЕ -->
+  <section class="screen" id="s-room">
+    <header class="screen__header"><button class="screen__back" data-goto="building">‹</button><div class="screen__title">ПОМЕЩЕНИЕ</div><span class="screen__hactions"></span></header>
+    <div class="screen__content">
+      <div class="field"><label>Название</label><div class="namebar"><input value="Основное строение"><button class="del" title="Удалить">🗑</button></div></div>
+      <ul class="list"><li class="row" data-goto="panel"><div class="row__main"><div class="row__title">Помещение</div></div><span class="count">0</span></li></ul>
+      <div class="section-label">Щит / панель</div>
+      <ul class="list">
+        <li class="row" data-goto="panel"><span class="row__handle">⠿</span><div class="row__main"><div class="row__title">Щит ЧЗНХ №12</div></div><span class="count">1</span></li>
+        <li class="row" data-goto="panel"><span class="row__handle">⠿</span><div class="row__main"><div class="row__title">Щит ЧЗНХ №15</div></div><span class="count">2</span></li>
+      </ul>
+    </div>
+    <footer class="screen__footer"><span class="search"><input placeholder="Поиск"><button class="clear">✕</button></span><button class="btn-add">Добавить</button></footer>
+  </section>
+
+  <!-- 6. ЩИТ — ЗАМЕЧАНИЯ -->
+  <section class="screen" id="s-panel">
+    <header class="screen__header"><button class="screen__back" data-goto="room">‹</button><div class="screen__title">Щит / панель</div><span class="screen__hactions"></span></header>
+    <div class="screen__content">
+      <div class="field"><label>Название</label><div class="namebar"><input value="Щит ЧЗНХ №12"><button class="del" title="Удалить">🗑</button></div></div>
+
+      <ul class="list"><li class="row row--category" data-cat="c1"><span class="chev">▸</span><div class="row__main"><div class="row__title">Основное</div></div><span class="count">0/17</span></li></ul>
+      <div class="remark-group" data-group="c1"><ul class="list"><li class="row row--remark"><span class="check"></span><div class="row__main"><div class="row__title">Покрасить жёлтую дверь в синий цвет</div></div></li></ul></div>
+
+      <ul class="list"><li class="row row--category open" data-cat="c2"><span class="chev" style="transform:rotate(90deg)">▸</span><div class="row__main"><div class="row__title">Электрика</div></div><span class="count">1/2</span></li></ul>
+      <div class="remark-group open" data-group="c2"><ul class="list">
+        <li class="row row--remark checked"><span class="check">✓</span><div class="row__main"><div class="row__title">Дверь скрипит при открывании</div></div></li>
+        <li class="row row--remark"><span class="check"></span><div class="row__main"><div class="row__title">Нет выключателя по ГОСТ 1234-56-78</div></div></li>
+      </ul></div>
+
+      <ul class="list"><li class="row row--category" data-cat="c3"><span class="chev">▸</span><div class="row__main"><div class="row__title">Прочее</div></div><span class="count">0/21</span></li></ul>
+      <div class="remark-group" data-group="c3"><ul class="list"><li class="row row--remark"><span class="check"></span><div class="row__main"><div class="row__title">Прочее замечание</div></div></li></ul></div>
+    </div>
+    <footer class="screen__footer"><span class="search"><input placeholder="Поиск"><button class="clear">✕</button></span><button class="btn-add" data-modal="new">Добавить</button></footer>
+  </section>
+
+  <!-- МОДАЛКА -->
+  <div class="modal-back" id="modal">
+    <div class="modal">
+      <div class="modal__head">
+        <button data-modal-close>Отмена</button>
+        <b id="modal-title">Новое замечание</b>
+        <span style="width:52px"></span>
+      </div>
+      <div class="modal__body">
+        <div class="mlabel">Текст</div>
+        <textarea placeholder="Текст замечания (можно в несколько строк)"></textarea>
+        <div class="mlabel">Категория</div>
+        <input class="cat-input" list="cats" placeholder="Выберите или введите">
+        <datalist id="cats"><option>Основное</option><option>Электрика</option><option>Документация</option><option>Прочее</option></datalist>
+        <div class="mlabel">Применимо к</div>
+        <div class="checks">
+          <label><input type="checkbox" checked> Документация</label>
+          <label><input type="checkbox" checked> Другое</label>
+          <label><input type="checkbox" checked> Здание</label>
+          <label><input type="checkbox" checked> Общее</label>
+          <label><input type="checkbox" checked> Помещение</label>
+          <label><input type="checkbox" checked> Щит / панель</label>
+        </div>
+      </div>
+      <div class="modal__foot">
+        <button class="delete" id="modal-del" style="display:none">Удалить</button>
+        <button class="save" data-modal-close>Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ -->
+  <div class="alert-back" id="confirm">
+    <div class="alert">
+      <div class="alert__body center">
+        <b>Удалить?</b>
+        <p id="confirm-text">Здание «Гараж» и все вложенные замечания будут удалены. Действие необратимо.</p>
+      </div>
+      <div class="alert__acts">
+        <button data-confirm-close>Отмена</button>
+        <button class="danger" data-confirm-close>Удалить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ОБНОВЛЕНИЕ КАТАЛОГА -->
+  <div class="alert-back" id="update">
+    <div class="alert" style="max-width:340px">
+      <div class="alert__body">
+        <div id="upd-loading">
+          <div class="spin"></div>
+          <p style="text-align:center">Загрузка каталога…</p>
+        </div>
+        <!-- Успех: <b><span class="ok-badge">✓ Каталог обновлён</span></b> без списка ошибок -->
+        <div id="upd-result" hidden>
+          <b style="color:var(--danger)">Каталог не обновлён</b>
+          <p>В таблице есть ошибки — оставлен прежний каталог.</p>
+          <div class="upd-errs">
+            <div class="mlabel">Ошибки</div>
+            <ul>
+              <li>Иерархия, уровень «Помещение»: должен быть ровно один изменяемый элемент (найдено 2)</li>
+              <li>Замечание «Дверь скрипит при открывании»: привязка ссылается на несуществующий элемент «Шкаф»</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="alert__acts" id="upd-acts" hidden>
+        <button data-update-close>Закрыть</button>
+        <button data-update-retry>Повторить</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function goto(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='s-'+id));
+    document.querySelectorAll('.demo-bar [data-goto]').forEach(b=>b.classList.toggle('active',b.dataset.goto===id));
+    const c=document.querySelector('.screen.active .screen__content'); if(c)c.scrollTop=0; }
+  document.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();goto(el.dataset.goto);}));
+  document.querySelectorAll('[data-theme-set]').forEach(b=>b.addEventListener('click',()=>document.documentElement.setAttribute('data-theme',b.dataset.themeSet)));
+
+  // категории
+  document.querySelectorAll('.row--category').forEach(cat=>cat.addEventListener('click',()=>{
+    const g=document.querySelector('.remark-group[data-group="'+cat.dataset.cat+'"]');
+    const open=cat.classList.toggle('open'); if(g)g.classList.toggle('open',open);
+    const ch=cat.querySelector('.chev'); if(ch)ch.style.transform=open?'rotate(90deg)':''; }));
+
+  // отметка замечаний (на экране щита)
+  document.querySelectorAll('#s-panel .row--remark').forEach(r=>r.addEventListener('click',()=>{
+    const on=r.classList.toggle('checked'); r.querySelector('.check').textContent=on?'✓':''; }));
+
+  // поиск: фильтр + подсветка совпадения (через DOM-узлы — безопасно к «<» и пр.) + крестик
+  function hlRow(row, q){
+    const t=row.querySelector('.row__title'); if(!t) return true;
+    const text=t.textContent;
+    const i = q ? text.toLowerCase().indexOf(q) : -1;
+    t.textContent = text;                       // сброс прежней подсветки
+    if(q && i>=0){
+      t.textContent='';
+      t.append(document.createTextNode(text.slice(0,i)));
+      const m=document.createElement('span'); m.className='hl'; m.textContent=text.slice(i,i+q.length); t.append(m);
+      t.append(document.createTextNode(text.slice(i+q.length)));
+      return true;
+    }
+    return q ? i>=0 : true;
+  }
+  document.querySelectorAll('.search input').forEach(inp=>{
+    const wrap=inp.closest('.search'), screen=inp.closest('.screen'), clear=wrap.querySelector('.clear');
+    const apply=()=>{
+      const q=inp.value.trim().toLowerCase();
+      wrap.classList.toggle('has-text', inp.value.length>0);
+      screen.querySelectorAll('.row').forEach(r=>{
+        if(r.classList.contains('row--category')){ r.style.display=''; return; }
+        r.style.display = hlRow(r,q) ? '' : 'none';
+      });
+    };
+    inp.addEventListener('input',apply);
+    clear.addEventListener('click',()=>{inp.value='';apply();inp.focus();});
+  });
+
+  // модалка
+  const modal=document.getElementById('modal');
+  function openModal(mode){ document.getElementById('modal-title').textContent=mode==='edit'?'Замечание':'Новое замечание';
+    document.getElementById('modal-del').style.display=mode==='edit'?'block':'none'; modal.classList.add('open'); }
+  document.querySelectorAll('[data-modal]').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();openModal(el.dataset.modal);}));
+  document.querySelectorAll('[data-modal-close]').forEach(b=>b.addEventListener('click',()=>modal.classList.remove('open')));
+  modal.addEventListener('click',e=>{ if(e.target===modal) modal.classList.remove('open'); });
+
+  // подтверждение удаления
+  const confirm=document.getElementById('confirm');
+  document.querySelectorAll('.del').forEach(d=>d.addEventListener('click',e=>{e.stopPropagation();confirm.classList.add('open');}));
+  document.querySelectorAll('[data-confirm-close]').forEach(b=>b.addEventListener('click',()=>confirm.classList.remove('open')));
+  confirm.addEventListener('click',e=>{ if(e.target===confirm) confirm.classList.remove('open'); });
+
+  // обновление каталога: спиннер → результат
+  const update=document.getElementById('update');
+  const updLoading=document.getElementById('upd-loading'), updResult=document.getElementById('upd-result'), updActs=document.getElementById('upd-acts');
+  function runUpdate(){ update.classList.add('open'); updLoading.hidden=false; updResult.hidden=true; updActs.hidden=true;
+    setTimeout(()=>{ updLoading.hidden=true; updResult.hidden=false; updActs.hidden=false; }, 900); }
+  document.querySelectorAll('.iconbtn[title="Обновить каталог"]').forEach(b=>b.addEventListener('click',runUpdate));
+  document.querySelectorAll('[data-update-close]').forEach(b=>b.addEventListener('click',()=>update.classList.remove('open')));
+  document.querySelectorAll('[data-update-retry]').forEach(b=>b.addEventListener('click',runUpdate));
+  update.addEventListener('click',e=>{ if(e.target===update) update.classList.remove('open'); });
+</script>
+</body>
+</html>
