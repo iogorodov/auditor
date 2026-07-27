@@ -24,31 +24,46 @@
 
 ## Этап 3а — online-версия
 
-### Прод-сборка (Bun)
+### Прод-сборка (Bun) — сделано
 
-- Вход — `index.html` (тянет `src/app.ts` и `src/app.css`); `bun build index.html --outdir dist`
-  с минификацией и хэшами в именах: `app.[hash].js` + `app.[hash].css`, iife/без code-splitting.
-- Относительные пути в выходном `index.html` (проверить, что Bun не пишет ведущий `/`).
-- Скрипт `bun run build`; результат в `dist/` (в `.gitignore` уже есть).
+- Вход — `index.html` (тянет `src/app.ts` и `src/app.css`). Скрипт `bun run build` =
+  `rm -rf dist && bun build ./index.html --outdir dist --minify`; результат в `dist/`
+  (в `.gitignore` уже есть).
+- Имена выходов — дефолт Bun для HTML-входа: `index-[hash].js` + `index-[hash].css`
+  (не `app.[hash]`; флаг `--entry-naming` пробовать нельзя — он переименовывает сам
+  `index.html` и ломает стабильное имя входа). `index.html` — стабильное имя, без хэша.
+- **Относительные пути подтверждены:** Bun пишет `./index-[hash].js|css` (без ведущего `/`).
+  Проверено локальным статик-сервером с подпутём `/auditor/` — страница и оба ассета отдают 200.
+  В коде нет ни `fetch`, ни абсолютных путей, ни `url()` в CSS — под подпутём ничего не сломается.
 
 ```
 dist/
-  index.html
-  app.[hash].js
-  app.[hash].css
+  index.html          (стабильное имя)
+  index-[hash].js
+  index-[hash].css
 ```
 
-### CI / деплой (GitHub Actions)
+### CI / деплой (GitHub Actions) — сделано
 
-Один workflow на push в `master`:
+`.github/workflows/deploy.yml`, один workflow на push в `master` (+ `workflow_dispatch`).
+Два джоба: `build` гоняет всё и грузит артефакт, `deploy` зависит от `build`
+(красные тесты → нет деплоя). `permissions: pages/id-token: write`, `concurrency: pages`.
+
+Джоб `build` (`oven-sh/setup-bun` + `actions/setup-node`):
 
 1. `bun install --frozen-lockfile`
-2. `bunx tsc --noEmit`
+2. `bunx tsc --noEmit` (typescript закреплён в `package.json`/lockfile — иначе `bunx` тянул бы его мимо frozen-lockfile)
 3. `bun test`
-4. E2E: `npx playwright install --with-deps chromium` + `npx playwright test`
+4. E2E: `bunx playwright install --with-deps chromium` + `bunx playwright test`
+   (Playwright сам поднимает dev-сервер `bun start` через `webServer` в конфиге)
 5. `bun run build`
-6. Деплой `dist/` через `actions/upload-pages-artifact` + `actions/deploy-pages`
-   (в настройках репозитория: Pages → Source: GitHub Actions).
+6. `actions/upload-pages-artifact@v3` (path: `dist`)
+
+Джоб `deploy`: `actions/deploy-pages@v4`, environment `github-pages`
+(в настройках репозитория: Pages → Source: GitHub Actions).
+
+**Известный необязательный хвост:** E2E гоняются против dev-сервера, не против `dist/`.
+Прогон E2E поверх прод-сборки (доступ к `dist/` под подпутём) — по желанию, не сделан.
 
 ### Проверка этапа 3а
 
