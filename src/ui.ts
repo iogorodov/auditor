@@ -125,7 +125,7 @@ interface FrameOpts {
 function screenFrame(opts: FrameOpts): HTMLElement {
   const title = h('div', { class: 'screen__title' }, [h('span', { class: 'ttl', text: opts.title })]);
   const editBtn = opts.onEdit
-    ? h('button', { class: 'iconbtn', title: 'Изменить название', text: '✎', onclick: opts.onEdit })
+    ? h('button', { class: 'iconbtn iconbtn--edit', title: 'Изменить название', text: '✎', onclick: opts.onEdit })
     : null;
   const header = h('header', { class: 'screen__header' }, [
     opts.back ? h('button', { class: 'screen__back', title: 'Назад', text: '‹', onclick: back }) : h('span'),
@@ -299,7 +299,7 @@ function makeSortable<T>(ul: HTMLElement, allNodes: T[], write: (next: T[]) => v
 // ================= ЭКРАН: СПИСОК АУДИТОВ (§6.3) =================
 
 function screenAudits(): HTMLElement {
-  const menuBtn = h('button', { class: 'fab-left', title: 'Меню', text: '☰' });
+  const menuBtn = h('button', { class: 'fab-left fab-left--menu', title: 'Меню' }, [h('span', { class: 'burger' })]);
   menuBtn.addEventListener('click', () => openMenu(menuBtn, [
     { label: 'Мои замечания', onClick: () => navTo({ kind: 'myremarks' }) },
     { label: 'Обновить каталог', onClick: () => runCatalogUpdate() },
