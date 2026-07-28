@@ -30,9 +30,10 @@ test('поиск на экране замечаний подсвечивает �
   const hl = page.locator('.row--remark:visible .hl').first();
   await expect(hl).toBeVisible();
   await expect(hl).toContainText('провод');
-  // очистка возвращает список
-  await page.locator('.search .clear').click();
-  await expect(page.locator('.search input')).toHaveValue('');
+  // «Отмена» (крестик) закрывает поиск и сбрасывает фильтр
+  await page.locator('.inputbar--search .bar-cancel').click();
+  await expect(page.locator('.search input')).toBeHidden();
+  await expect(page.locator('.hl')).toHaveCount(0);
 });
 
 // §6.9: удаление узла через диалог подтверждения.

@@ -51,16 +51,16 @@ test('полный поток: аудит → узлы → отметка → с
   await expect(page.locator('li.row').filter({ hasText: 'Тестовый аудит' }).locator('.count')).toHaveText('1');
 });
 
-// §7: пустая inline-строка ничего не создаёт; непустая — добавляет и остаётся в списке (без перехода).
-test('пустая inline-строка ничего не создаёт, непустая добавляет в список', async ({ page }) => {
+// §7: пустой ввод ничего не создаёт; непустой — добавляет и остаётся в списке (без перехода).
+test('пустой ввод ничего не создаёт, непустой добавляет в список', async ({ page }) => {
   await page.goto('/');
   await updateCatalog(page);
 
-  // «Добавить» → пустой ввод → Enter → аудит не создан.
+  // «Добавить» → нижний бар → пустой ввод → Enter → аудит не создан, бар закрылся.
   await page.getByRole('button', { name: 'Добавить' }).click();
-  await expect(page.locator('.row--input input')).toBeVisible();
-  await page.locator('.row--input input').press('Enter');
-  await expect(page.locator('.row--input')).toHaveCount(0);
+  await expect(page.locator('.inputbar--add input')).toBeVisible();
+  await page.locator('.inputbar--add input').press('Enter');
+  await expect(page.locator('.inputbar--add input')).toBeHidden();
   await expect(page.getByText('Аудитов пока нет')).toBeVisible();
 
   // Непустой ввод → аудит создан, остаёмся в списке (внутрь не переходим).

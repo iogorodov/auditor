@@ -33,10 +33,10 @@ export async function updateCatalog(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Закрыть' }).click();
 }
 
-// «Добавить» (в заголовке секции) → inline-строка → ввод имени → Enter (коммит).
+// «Добавить» → нижний бар ввода имени → Enter (коммит).
 export async function commitInline(page: Page, value: string): Promise<void> {
   await page.getByRole('button', { name: 'Добавить' }).click();
-  const input = page.locator('.row--input input');
+  const input = page.locator('.inputbar--add input');
   await input.fill(value);
   await input.press('Enter');
 }

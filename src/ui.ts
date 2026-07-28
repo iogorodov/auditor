@@ -91,12 +91,18 @@ function renderRoute(route: Route): HTMLElement {
 
 // ================= КАРКАС ЭКРАНА =================
 
+// Действие кнопки «Добавить»: либо inline-ввод имени в нижнем баре (create), либо открытие
+// модалки (open — для замечаний).
+type AddSpec =
+  | { kind: 'inline'; create: (name: string) => void }
+  | { kind: 'modal'; open: () => void };
+
 interface FrameOpts {
   title: string;
   back?: boolean;
   actions?: HTMLElement[];
   content: (Node | null)[];
-  onAdd?: () => void; // синяя кнопка «Добавить» внизу по центру (действие добавления экрана)
+  onAdd?: AddSpec; // синяя кнопка «Добавить» внизу по центру
   searchKind?: 'list' | 'remarks';
 }
 
@@ -108,57 +114,73 @@ function screenFrame(opts: FrameOpts): HTMLElement {
   ]);
 
   const content = h('div', { class: 'screen__content' }, opts.content);
+  const searchKind = opts.searchKind ?? 'list';
 
-  // Внизу: синяя «Добавить» по центру (действие добавления экрана) + круглая кнопка поиска (лупа)
-  // справа. По лупе снизу раскрывается поле ввода (+ «Отмена»). Поведение «Добавить» — то же
-  // inline-добавление, что и раньше в заголовках секций (§6.1).
-  const searchInput = h('input', { placeholder: 'Поиск' }) as HTMLInputElement;
-  const clearBtn = h('button', { class: 'clear', text: '✕' });
-  const searchWrap = h('span', { class: 'search' }, [searchInput, clearBtn]);
-  const cancelBtn = h('button', { class: 'search-cancel', text: 'Отмена' });
-  const searchBar = h('div', { class: 'searchbar' }, [searchWrap, cancelBtn]);
-
-  const toggleBtn = h('button', { class: 'fab-search', title: 'Поиск', text: '⌕' });
-  const controls = h('div', { class: 'screen__controls' }, [
-    opts.onAdd ? h('div', { class: 'fab-bar' }, [h('button', { class: 'fab-add', text: 'Добавить', onclick: opts.onAdd })]) : null,
-    toggleBtn,
-    searchBar,
+  // Плавающий оверлей: синяя «Добавить» по центру + круглая лупа справа. Клавиатуры у них нет,
+  // поэтому абсолютное позиционирование им безопасно.
+  const lupa = h('button', { class: 'fab-search', title: 'Поиск', text: '⌕' });
+  const addPill = opts.onAdd ? h('button', { class: 'fab-add', text: 'Добавить' }) : null;
+  const overlay = h('div', { class: 'screen__overlay' }, [
+    addPill ? h('div', { class: 'fab-bar' }, [addPill]) : null,
+    lupa,
   ]);
 
-  const screen = h('section', { class: 'screen' }, [header, content, controls]);
-  wireSearch({ screen, controls, input: searchInput, clearBtn, wrap: searchWrap, toggleBtn, cancelBtn, kind: opts.searchKind ?? 'list' });
+  // Нижние бары ввода (поиск и добавление) — в потоке flex-колонки, а не оверлеем: тогда
+  // экранная клавиатура на iOS штатно поджимает их через --app-height (см. src/viewport.ts),
+  // без «прокрутки окна» к абсолютному инпуту.
+  const searchInput = h('input', { placeholder: 'Поиск' }) as HTMLInputElement;
+  const searchCancel = h('button', { class: 'bar-cancel', title: 'Закрыть', text: '✕' });
+  const searchBar = h('div', { class: 'inputbar inputbar--search' }, [h('span', { class: 'search' }, [searchInput]), searchCancel]);
+
+  const addInput = h('input', { placeholder: 'Название' }) as HTMLInputElement;
+  const addCancel = h('button', { class: 'bar-cancel', title: 'Отмена', text: '✕' });
+  const addBar = h('div', { class: 'inputbar inputbar--add' }, [addInput, addCancel]);
+
+  const screen = h('section', { class: 'screen' }, [header, content, overlay, searchBar, addBar]);
+
+  // --- поиск ---
+  const runFilter = () => applySearchFilter(screen, searchInput, searchKind);
+  searchInput.addEventListener('input', runFilter);
+  lupa.addEventListener('click', () => { screen.classList.add('searching'); searchInput.focus(); });
+  const closeSearch = () => { screen.classList.remove('searching'); searchInput.value = ''; runFilter(); searchInput.blur(); };
+  searchCancel.addEventListener('click', closeSearch);
+
+  // --- добавление ---
+  if (opts.onAdd && addPill) {
+    const spec = opts.onAdd;
+    if (spec.kind === 'modal') {
+      addPill.addEventListener('click', spec.open);
+    } else {
+      let done = false;
+      let cancelled = false;
+      const finish = () => {
+        if (done) return; // Enter → blur; клик по «Отмена» → тоже один проход
+        done = true;
+        const name = normalize(addInput.value);
+        screen.classList.remove('adding');
+        if (name && !cancelled) { spec.create(name); rerender(); }
+      };
+      addPill.addEventListener('click', () => {
+        addInput.value = ''; done = false; cancelled = false;
+        screen.classList.add('adding'); addInput.focus();
+      });
+      addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addInput.blur(); } });
+      addInput.addEventListener('blur', finish);
+      // Крестик отменяет: флаг ставим на pointerdown (до blur), плюс явный обработчик — Safari
+      // не переводит фокус на кнопку по клику, так что blur может и не сработать.
+      addCancel.addEventListener('pointerdown', () => { cancelled = true; });
+      addCancel.addEventListener('click', () => { cancelled = true; finish(); });
+    }
+  }
+
   return screen;
 }
 
-// ================= СЕКЦИИ И INLINE-ДОБАВЛЕНИЕ =================
+// ================= СЕКЦИИ =================
 
-// Заголовок секции добавляемых элементов: подпись слева, кнопка «Добавить» справа.
-function sectionHeader(label: string, onAdd?: () => void): HTMLElement {
-  return h('div', { class: 'section-label' }, [
-    h('span', { text: label }),
-    onAdd ? h('button', { class: 'section-add', text: 'Добавить', onclick: onAdd }) : null,
-  ]);
-}
-
-// Inline-добавление: вставляет строку-input в список и фокусирует её. По Enter/расфокусу пустая
-// строка исчезает бесследно, непустая — создаёт элемент (create) и перерисовывает экран (§7:
-// пустой узел в модель не попадает). По одному за раз — без авто-строки для следующего.
-function startInlineAdd(listEl: HTMLElement, create: (name: string) => void, atStart = false): void {
-  const existing = listEl.querySelector<HTMLInputElement>('.row--input input');
-  if (existing) { existing.focus(); return; }
-  const input = h('input', { placeholder: 'Название' }) as HTMLInputElement;
-  const li = h('li', { class: 'row row--input' }, [h('div', { class: 'row__main' }, [input])]);
-  if (atStart) listEl.prepend(li); else listEl.append(li);
-  let done = false;
-  const commit = () => {
-    if (done) return; // Enter → blur, чтобы не сработать дважды
-    done = true;
-    const name = normalize(input.value);
-    if (name) { create(name); rerender(); } else { li.remove(); }
-  };
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
-  input.addEventListener('blur', commit);
-  input.focus();
+// Заголовок секции (просто подпись). Добавление живёт в кнопке «Добавить» внизу (screenFrame).
+function sectionHeader(label: string): HTMLElement {
+  return h('div', { class: 'section-label' }, [h('span', { text: label })]);
 }
 
 // ================= СТРОКИ =================
@@ -222,57 +244,39 @@ function nameField(o: NameFieldOpts): HTMLElement {
 
 // ================= ПОИСК =================
 
-interface SearchWiring {
-  screen: HTMLElement;
-  controls: HTMLElement;
-  input: HTMLInputElement;
-  clearBtn: HTMLElement;
-  wrap: HTMLElement;
-  toggleBtn: HTMLElement;
-  cancelBtn: HTMLElement;
-  kind: 'list' | 'remarks';
-}
-
-function wireSearch({ screen, controls, input, clearBtn, wrap, toggleBtn, cancelBtn, kind }: SearchWiring): void {
-  const apply = () => {
-    const q = input.value.trim().toLowerCase();
-    wrap.classList.toggle('has-text', input.value.length > 0);
-    if (kind === 'list') {
-      screen.querySelectorAll<HTMLElement>('.screen__content .row').forEach((r) => {
-        const t = r.querySelector<HTMLElement>('.row__title');
-        if (!t) return;
+// Один проход фильтрации текущего экрана по подстроке (списки строк или категории замечаний).
+function applySearchFilter(screen: HTMLElement, input: HTMLInputElement, kind: 'list' | 'remarks'): void {
+  const q = input.value.trim().toLowerCase();
+  if (kind === 'list') {
+    screen.querySelectorAll<HTMLElement>('.screen__content .row').forEach((r) => {
+      const t = r.querySelector<HTMLElement>('.row__title');
+      if (!t) return;
+      const text = t.dataset.text ?? '';
+      r.style.display = matchesQuery(text, q) ? '' : 'none';
+      highlightInto(t, text, q);
+    });
+  } else {
+    screen.querySelectorAll<HTMLElement>('.cat-block').forEach((block) => {
+      const catRow = block.querySelector<HTMLElement>('.row--category')!;
+      const group = block.querySelector<HTMLElement>('.remark-group')!;
+      let anyVisible = false;
+      block.querySelectorAll<HTMLElement>('.row--remark').forEach((r) => {
+        const t = r.querySelector<HTMLElement>('.row__title')!;
         const text = t.dataset.text ?? '';
-        r.style.display = matchesQuery(text, q) ? '' : 'none';
+        const ok = matchesQuery(text, q);
+        r.style.display = ok ? '' : 'none';
+        if (ok) anyVisible = true;
         highlightInto(t, text, q);
       });
-    } else {
-      screen.querySelectorAll<HTMLElement>('.cat-block').forEach((block) => {
-        const catRow = block.querySelector<HTMLElement>('.row--category')!;
-        const group = block.querySelector<HTMLElement>('.remark-group')!;
-        let anyVisible = false;
-        block.querySelectorAll<HTMLElement>('.row--remark').forEach((r) => {
-          const t = r.querySelector<HTMLElement>('.row__title')!;
-          const text = t.dataset.text ?? '';
-          const ok = matchesQuery(text, q);
-          r.style.display = ok ? '' : 'none';
-          if (ok) anyVisible = true;
-          highlightInto(t, text, q);
-        });
-        if (q) {
-          block.style.display = anyVisible ? '' : 'none';
-          catRow.classList.toggle('open', anyVisible); // категории с совпадениями раскрыты (§7)
-          group.classList.toggle('open', anyVisible);
-        } else {
-          block.style.display = '';
-        }
-      });
-    }
-  };
-  input.addEventListener('input', apply);
-  clearBtn.addEventListener('click', () => { input.value = ''; apply(); input.focus(); });
-  // «Поиск» открывает поле снизу и фокусирует его; «Отмена» — закрывает и сбрасывает фильтр.
-  toggleBtn.addEventListener('click', () => { controls.classList.add('searching'); input.focus(); });
-  cancelBtn.addEventListener('click', () => { controls.classList.remove('searching'); input.value = ''; apply(); input.blur(); });
+      if (q) {
+        block.style.display = anyVisible ? '' : 'none';
+        catRow.classList.toggle('open', anyVisible); // категории с совпадениями раскрыты (§7)
+        group.classList.toggle('open', anyVisible);
+      } else {
+        block.style.display = '';
+      }
+    });
+  }
 }
 
 // ================= DRAG =================
@@ -304,18 +308,21 @@ function screenAudits(): HTMLElement {
     navRow({ title: a.name || '(без названия)', sub: formatDate(a.time), count: countAudit(a), onClick: () => navTo({ kind: 'audit', audit: a }) }),
   ));
 
-  const addAudit = () => startInlineAdd(list, (name) => {
-    state.audits.push({ id: uid(), name, time: nowSec(), buildings: [] });
-    persistAudits();
-  }, true); // новый аудит — самый свежий, встаёт в начало списка
-
   const content: (Node | null)[] = [];
   if (!state.catalog) content.push(h('div', { class: 'empty-note', text: 'Каталог пуст. Нажмите ↻ и выберите файл каталога (.xlsx) с листами «Иерархия» и «Замечания».' }));
   content.push(sectionHeader('Аудиты'));
   if (audits.length === 0) content.push(h('div', { class: 'empty-note', text: 'Аудитов пока нет. Нажмите «Добавить».' }));
   content.push(list);
 
-  return screenFrame({ title: 'АУДИТОР', actions: [star, refresh], content, onAdd: addAudit });
+  return screenFrame({
+    title: 'АУДИТОР',
+    actions: [star, refresh],
+    content,
+    onAdd: { kind: 'inline', create: (name) => {
+      state.audits.push({ id: uid(), name, time: nowSec(), buildings: [] }); // самый свежий → в начало списка
+      persistAudits();
+    } },
+  });
 }
 
 // ================= ЭКРАН: АУДИТ (список зданий, §6.4) =================
@@ -350,15 +357,11 @@ function screenAudit(audit: Audit): HTMLElement {
   }));
   makeSortable(list, audit.buildings, (next) => { audit.buildings = next; touchAudit(audit); rerender(); });
 
-  const addBuilding = () => startInlineAdd(list, (name) => {
-    audit.buildings.push({ name, nodes: [] });
-    touchAudit(audit);
-  });
-
   return screenFrame({
     title: 'АУДИТ',
     back: true,
     actions: [exportBtn],
+    onAdd: { kind: 'inline', create: (name) => { audit.buildings.push({ name, nodes: [] }); touchAudit(audit); } },
     content: [
       nameField({
         name: audit.name,
@@ -372,9 +375,8 @@ function screenAudit(audit: Audit): HTMLElement {
       }),
       sectionHeader('Здания'),
       audit.buildings.length ? null : h('div', { class: 'empty-note', text: 'Зданий пока нет.' }),
-      list, // всегда в DOM (может быть пустым) — сюда встаёт inline-строка добавления
+      list,
     ],
-    onAdd: addBuilding,
   });
 }
 
@@ -401,17 +403,17 @@ function screenBuilding(audit: Audit, building: AuditBuilding): HTMLElement {
   }
 
   const entries = resolveLevel1(building.nodes, tmpl);
-  const onAdd = appendLevel1(content, entries, audit, building);
+  const create = appendLevel1(content, entries, audit, building);
 
-  return screenFrame({ title: 'ЗДАНИЕ', back: true, content, onAdd });
+  return screenFrame({ title: 'ЗДАНИЕ', back: true, content, onAdd: create ? { kind: 'inline', create } : undefined });
 }
 
 // Рендер записей уровня 1: фикс-узлы строками, изменяемая группа — подпись + drag-список.
-// Возвращает действие добавления (inline) изменяемой группы — для кнопки «Добавить» внизу.
-function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[], audit: Audit, building: AuditBuilding): (() => void) | undefined {
+// Возвращает функцию создания экземпляра изменяемой группы (для кнопки «Добавить» внизу).
+function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[], audit: Audit, building: AuditBuilding): ((name: string) => void) | undefined {
   const fixedRows: HTMLLIElement[] = [];
   const groups: HTMLElement[] = [];
-  let onAdd: (() => void) | undefined;
+  let create: ((name: string) => void) | undefined;
   for (const e of entries) {
     if (e.kind === 'fixed') {
       fixedRows.push(navRow({ title: e.node.name, count: e.node.count, onClick: () => openL1(audit, building, e.node) }));
@@ -422,16 +424,13 @@ function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[
         return li;
       }));
       makeSortable(ul, building.nodes, (next) => { building.nodes = next; touchAudit(audit); rerender(); });
-      onAdd = () => startInlineAdd(ul, (name) => {
-        building.nodes.push({ name, nodes: [] });
-        touchAudit(audit);
-      });
+      create = (name) => { building.nodes.push({ name, nodes: [] }); touchAudit(audit); };
       groups.push(h('div', {}, [sectionHeader(e.slotName), ul]));
     }
   }
   if (fixedRows.length) content.push(h('ul', { class: 'list' }, fixedRows));
   content.push(...groups);
-  return onAdd;
+  return create;
 }
 
 // Открыть узел уровня 1 (материализуем фикс-узел при необходимости).
@@ -472,7 +471,7 @@ function screenL1(route: Route & { kind: 'l1' }): HTMLElement {
 
   const fixedRows: HTMLLIElement[] = [];
   const groups: HTMLElement[] = [];
-  let onAdd: (() => void) | undefined;
+  let create: ((name: string) => void) | undefined;
   for (const e of entries) {
     if (e.kind === 'fixed') {
       fixedRows.push(navRow({ title: e.node.name, count: e.node.count, onClick: () => openLeaf(audit, building, node, slotName, e.node) }));
@@ -483,17 +482,14 @@ function screenL1(route: Route & { kind: 'l1' }): HTMLElement {
         return li;
       }));
       makeSortable(ul, node.nodes, (next) => { node.nodes = next; touchAudit(audit); rerender(); });
-      onAdd = () => startInlineAdd(ul, (name) => {
-        node.nodes.push({ name, remarks: [] });
-        touchAudit(audit);
-      });
+      create = (name) => { node.nodes.push({ name, remarks: [] }); touchAudit(audit); };
       groups.push(h('div', {}, [sectionHeader(e.slotName), ul]));
     }
   }
   if (fixedRows.length) content.push(h('ul', { class: 'list' }, fixedRows));
   content.push(...groups);
 
-  return screenFrame({ title: fixed ? slotName : (node.name || 'Узел'), back: true, content, onAdd });
+  return screenFrame({ title: fixed ? slotName : (node.name || 'Узел'), back: true, content, onAdd: create ? { kind: 'inline', create } : undefined });
 }
 
 function openLeaf(audit: Audit, building: AuditBuilding, l1: AuditLevel1Node, l1SlotName: string, leaf: ResolvedLeaf): void {
@@ -543,7 +539,7 @@ function screenLeaf(route: Route & { kind: 'leaf' }): HTMLElement {
     back: true,
     content,
     searchKind: 'remarks',
-    onAdd: () => openRemarkModal({ mode: 'new', checkInLeaf: node, audit }),
+    onAdd: { kind: 'modal', open: () => openRemarkModal({ mode: 'new', checkInLeaf: node, audit }) },
   });
 }
 
@@ -645,7 +641,7 @@ function screenMyRemarks(): HTMLElement {
     actions: [exportBtn],
     content,
     searchKind: 'remarks',
-    onAdd: () => openRemarkModal({ mode: 'new' }),
+    onAdd: { kind: 'modal', open: () => openRemarkModal({ mode: 'new' }) },
   });
 }
 
