@@ -129,7 +129,7 @@ interface FrameOpts {
   back?: boolean;
   actions?: HTMLElement[];
   content: (Node | null)[];
-  onAdd: () => void;
+  onAdd?: () => void;
   searchKind?: 'list' | 'remarks';
 }
 
@@ -142,16 +142,23 @@ function screenFrame(opts: FrameOpts): HTMLElement {
 
   const content = h('div', { class: 'screen__content' }, opts.content);
 
-  const searchInput = h('input', { placeholder: 'Поиск' });
+  // Плавающие кнопки поверх контента (выделенного футера нет): «Добавить» по центру,
+  // небольшой «Поиск» справа. По «Поиск» кнопки прячутся и снизу появляется поле ввода.
+  const searchInput = h('input', { placeholder: 'Поиск' }) as HTMLInputElement;
   const clearBtn = h('button', { class: 'clear', text: '✕' });
   const searchWrap = h('span', { class: 'search' }, [searchInput, clearBtn]);
-  const footer = h('footer', { class: 'screen__footer' }, [
-    searchWrap,
-    h('button', { class: 'btn-add', text: 'Добавить', onclick: opts.onAdd }),
+  const cancelBtn = h('button', { class: 'search-cancel', text: 'Отмена' });
+  const searchBar = h('div', { class: 'searchbar' }, [searchWrap, cancelBtn]);
+
+  const toggleBtn = h('button', { class: 'fab-search', title: 'Поиск', text: 'Поиск' });
+  const addBtn = opts.onAdd ? h('button', { class: 'fab-add', text: 'Добавить', onclick: opts.onAdd }) : null;
+  const controls = h('div', { class: 'screen__controls' }, [
+    h('div', { class: 'fab-bar' }, [addBtn, toggleBtn]),
+    searchBar,
   ]);
 
-  const screen = h('section', { class: 'screen' }, [header, content, footer]);
-  wireSearch(screen, searchInput, clearBtn, searchWrap, opts.searchKind ?? 'list');
+  const screen = h('section', { class: 'screen' }, [header, content, controls]);
+  wireSearch({ screen, controls, input: searchInput, clearBtn, wrap: searchWrap, toggleBtn, cancelBtn, kind: opts.searchKind ?? 'list' });
   return screen;
 }
 
@@ -216,7 +223,18 @@ function nameField(o: NameFieldOpts): HTMLElement {
 
 // ================= ПОИСК =================
 
-function wireSearch(screen: HTMLElement, input: HTMLInputElement, clearBtn: HTMLElement, wrap: HTMLElement, kind: 'list' | 'remarks'): void {
+interface SearchWiring {
+  screen: HTMLElement;
+  controls: HTMLElement;
+  input: HTMLInputElement;
+  clearBtn: HTMLElement;
+  wrap: HTMLElement;
+  toggleBtn: HTMLElement;
+  cancelBtn: HTMLElement;
+  kind: 'list' | 'remarks';
+}
+
+function wireSearch({ screen, controls, input, clearBtn, wrap, toggleBtn, cancelBtn, kind }: SearchWiring): void {
   const apply = () => {
     const q = input.value.trim().toLowerCase();
     wrap.classList.toggle('has-text', input.value.length > 0);
@@ -253,6 +271,9 @@ function wireSearch(screen: HTMLElement, input: HTMLInputElement, clearBtn: HTML
   };
   input.addEventListener('input', apply);
   clearBtn.addEventListener('click', () => { input.value = ''; apply(); input.focus(); });
+  // «Поиск» открывает поле снизу и фокусирует его; «Отмена» — закрывает и сбрасывает фильтр.
+  toggleBtn.addEventListener('click', () => { controls.classList.add('searching'); input.focus(); });
+  cancelBtn.addEventListener('click', () => { controls.classList.remove('searching'); input.value = ''; apply(); input.blur(); });
 }
 
 // ================= DRAG =================
@@ -379,7 +400,7 @@ function screenBuilding(audit: Audit, building: AuditBuilding): HTMLElement {
 
   if (!tmpl) {
     content.push(h('div', { class: 'empty-note', text: 'Иерархия не загружена. Обновите каталог (↻ на главном экране).' }));
-    return screenFrame({ title: 'ЗДАНИЕ', back: true, content, onAdd: () => {} });
+    return screenFrame({ title: 'ЗДАНИЕ', back: true, content });
   }
 
   const entries = resolveLevel1(building.nodes, tmpl);

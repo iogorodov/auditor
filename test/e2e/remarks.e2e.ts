@@ -25,6 +25,7 @@ test('замечание из листа → отмечено в листе и �
 // §7: поиск на экране замечаний — фильтрация + подсветка, категории с совпадениями раскрыты.
 test('поиск на экране замечаний подсвечивает совпадение', async ({ page }) => {
   await gotoNewLeaf(page);
+  await page.getByRole('button', { name: 'Поиск' }).click(); // раскрыть поле поиска
   await page.locator('.search input').fill('провод');
   const hl = page.locator('.row--remark:visible .hl').first();
   await expect(hl).toBeVisible();
