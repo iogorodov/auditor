@@ -26,6 +26,9 @@ type Route =
 
 let app: HTMLElement;
 const stack: Route[] = [{ kind: 'audits' }];
+// Одноразовый флаг: после перехода на свежесозданный экран фокусируем поле «Название»,
+// чтобы сразу открылась клавиатура (фокус — синхронно в жесте клика, иначе iOS её не покажет).
+let focusNameOnRender = false;
 
 export function startUI(root: HTMLElement): void {
   app = root;
@@ -47,6 +50,7 @@ function showPersistError(): void {
 
 function navTo(route: Route): void {
   if (!canLeave()) return; // уход вглубь тоже требует заданного имени (§7)
+  if ('isNew' in route && route.isNew) focusNameOnRender = true;
   stack.push(route);
   render();
 }
@@ -105,6 +109,10 @@ function render(): void {
   const route = stack[stack.length - 1]!;
   clear(app);
   app.append(renderRoute(route));
+  if (focusNameOnRender) {
+    focusNameOnRender = false;
+    app.querySelector<HTMLInputElement>('.namebar input[data-required]')?.focus();
+  }
 }
 
 function rerender(): void {
