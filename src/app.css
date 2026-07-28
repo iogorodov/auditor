@@ -37,8 +37,12 @@ body {
   font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  /* Документ не скроллим — прокрутка живёт внутри .screen__content. Иначе iOS уводит
+     всю страницу вверх при фокусе на поле и шапка уезжает за край. */
+  overflow: hidden;
 }
-#app { height: 100%; display: flex; flex-direction: column; max-width: 560px; margin: 0 auto;
+/* --app-height задаётся из visualViewport (src/viewport.ts); фолбэк 100% для старых движков. */
+#app { height: var(--app-height, 100%); display: flex; flex-direction: column; max-width: 560px; margin: 0 auto;
   border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 
 /* ================= КАРКАС ЭКРАНА ================= */

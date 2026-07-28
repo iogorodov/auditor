@@ -2,6 +2,9 @@
 
 import { loadAll } from './state.ts';
 import { startUI } from './ui.ts';
+import { installViewportFix } from './viewport.ts';
+
+installViewportFix();
 
 const root = document.getElementById('app');
 if (root) {
