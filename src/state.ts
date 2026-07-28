@@ -1,7 +1,7 @@
 // Состояние приложения + персистентность (§7 авто-сохранение). Экраны читают и мутируют state
 // напрямую, затем зовут persist* и rerender. Ядро (src/core) о state ничего не знает.
 
-import { loadCatalog, saveCatalog, loadUserRemarks, saveUserRemarks, loadAudits, saveAudits } from './db.ts';
+import { loadCatalog, saveCatalog, deleteCatalog, loadUserRemarks, saveUserRemarks, loadAudits, saveAudits } from './db.ts';
 import { nowSec } from './dom.ts';
 import type { Audit, Catalog, Remark } from './core/types.ts';
 
@@ -42,6 +42,13 @@ export function persistUserRemarks(): void {
 }
 export function persistCatalog(): void {
   if (state.catalog) guarded(saveCatalog(state.catalog));
+}
+
+// Очистка каталога: убираем и из state, и из IndexedDB (иначе перезагрузка вернёт прежний).
+// Пользовательские замечания не трогаем.
+export function clearCatalog(): void {
+  state.catalog = null;
+  guarded(deleteCatalog());
 }
 
 // time аудита обновляется при каждом изменении внутри него (§7).

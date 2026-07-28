@@ -40,8 +40,19 @@ async function kvSet(key: string, value: unknown): Promise<void> {
   });
 }
 
+async function kvDelete(key: string): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 export const loadCatalog = () => kvGet<Catalog>('catalog').then((c) => c ?? null);
 export const saveCatalog = (c: Catalog) => kvSet('catalog', c);
+export const deleteCatalog = () => kvDelete('catalog');
 
 export const loadUserRemarks = () => kvGet<Remark[]>('userRemarks').then((r) => r ?? []);
 export const saveUserRemarks = (r: Remark[]) => kvSet('userRemarks', r);

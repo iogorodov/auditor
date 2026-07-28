@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { addAndOpen, chooseCatalogFile, makeCatalogXlsx, updateCatalog } from './helpers';
+import { addAndOpen, chooseCatalogFile, commitInline, makeCatalogXlsx, openMenuItem, updateCatalog } from './helpers';
 
 // §5 (V2): успешное обновление каталога из xlsx-файла.
 test('обновление каталога: успех', async ({ page }) => {
@@ -11,6 +11,45 @@ test('обновление каталога: успех', async ({ page }) => {
   await addAndOpen(page, 'Аудит');
   await addAndOpen(page, 'Здание');
   await expect(page.locator('.row__title', { hasText: 'Документация' })).toBeVisible();
+});
+
+// Без каталога приложение заблокировано; «Очистить каталог» удаляет каталог (замечания целы).
+test('очистка каталога: экран заблокирован, замечания сохранены, аудиты скрыты', async ({ page }) => {
+  await page.goto('/');
+  await updateCatalog(page);
+
+  // Пользовательское замечание — должно пережить очистку каталога.
+  await openMenuItem(page, 'Мои замечания');
+  await page.getByRole('button', { name: 'Добавить' }).click();
+  await page.locator('.modal textarea').fill('Замечание сохраняется');
+  await page.locator('.modal .save').click();
+  await page.locator('.screen__back').click(); // → список аудитов
+
+  // Аудит — чтобы проверить, что без каталога он скрыт.
+  await commitInline(page, 'Аудит 1');
+  await expect(page.locator('li.row').filter({ hasText: 'Аудит 1' })).toBeVisible();
+
+  // Очистка — с подтверждением.
+  await page.getByTitle('Меню').click();
+  await page.getByRole('button', { name: 'Очистить каталог' }).click();
+  await expect(page.locator('.alert-back.open')).toBeVisible();
+  await page.locator('.alert__acts .danger').click();
+
+  // Экран заблокирован: красный баннер, аудиты скрыты, «Добавить»/поиск недоступны.
+  await expect(page.locator('.catalog-missing')).toBeVisible();
+  await expect(page.locator('li.row').filter({ hasText: 'Аудит 1' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Добавить' })).toBeDisabled();
+  await expect(page.getByTitle('Поиск')).toBeDisabled();
+
+  // Замечание уцелело.
+  await openMenuItem(page, 'Мои замечания');
+  await expect(page.getByText('Замечание сохраняется')).toBeVisible();
+  await page.locator('.screen__back').click();
+
+  // Вернули каталог — аудит снова виден, кнопки активны.
+  await updateCatalog(page);
+  await expect(page.locator('li.row').filter({ hasText: 'Аудит 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Добавить' })).toBeEnabled();
 });
 
 const GOOD_REMARKS = [

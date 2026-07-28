@@ -10,7 +10,7 @@ import { updateCatalogFromXlsx, type UpdateResult } from './core/catalogUpdate.t
 import { exportAuditXlsx, exportUserRemarksXlsx } from './core/export.ts';
 import { OTHER_CATEGORY, type Audit, type AuditBuilding, type AuditLeafNode, type AuditLevel1Node, type HierarchyTemplate, type Remark } from './core/types.ts';
 import { h, clear, highlightInto, matchesQuery, uid, nowSec, formatDate } from './dom.ts';
-import { state, persistAudits, persistUserRemarks, persistCatalog, touchAudit, onPersistError } from './state.ts';
+import { state, persistAudits, persistUserRemarks, persistCatalog, clearCatalog, touchAudit, onPersistError } from './state.ts';
 
 // ================= НАВИГАЦИЯ =================
 
@@ -131,6 +131,7 @@ interface FrameOpts {
   content: (Node | null)[];
   onAdd?: AddSpec; // синяя кнопка «Добавить» внизу по центру
   fabLeft?: HTMLElement | null; // круглая кнопка слева от «Добавить» (экспорт / меню)
+  actionsDisabled?: boolean; // блокирует «Добавить» и поиск (напр. пока нет каталога); fabLeft активен
   searchKind?: 'list' | 'remarks';
 }
 
@@ -152,6 +153,7 @@ function screenFrame(opts: FrameOpts): HTMLElement {
   // поэтому абсолютное позиционирование им безопасно.
   const lupa = h('button', { class: 'fab-search', title: 'Поиск', text: '⌕' });
   const addPill = opts.onAdd ? h('button', { class: 'fab-add', text: 'Добавить' }) : null;
+  if (opts.actionsDisabled) { lupa.disabled = true; if (addPill) addPill.disabled = true; }
   const overlay = h('div', { class: 'screen__overlay' }, [
     opts.fabLeft ?? null,
     addPill ? h('div', { class: 'fab-bar' }, [addPill]) : null,
@@ -311,32 +313,50 @@ function makeSortable<T>(ul: HTMLElement, allNodes: T[], write: (next: T[]) => v
 // ================= ЭКРАН: СПИСОК АУДИТОВ (§6.3) =================
 
 function screenAudits(): HTMLElement {
+  const hasCatalog = !!state.catalog;
+
   const menuBtn = h('button', { class: 'fab-left fab-left--menu', title: 'Меню' }, [h('span', { class: 'burger' })]);
-  menuBtn.addEventListener('click', () => openMenu(menuBtn, [
+  const menuItems = [
     { label: 'Мои замечания', onClick: () => navTo({ kind: 'myremarks' }) },
     { label: 'Обновить каталог', onClick: () => runCatalogUpdate() },
-  ]));
+  ];
+  // «Очистить каталог» — только когда есть что чистить.
+  if (hasCatalog) menuItems.push({ label: 'Очистить каталог', onClick: () => confirmClearCatalog() });
+  menuBtn.addEventListener('click', () => openMenu(menuBtn, menuItems));
+
+  // «Добавить» присутствует всегда (чтобы её было видно заблокированной без каталога).
+  const onAdd: AddSpec = { kind: 'inline', create: (name) => {
+    state.audits.push({ id: uid(), name, time: nowSec(), buildings: [] }); // самый свежий → в начало списка
+    persistAudits();
+  } };
+
+  const content: (Node | null)[] = [];
+
+  // Без каталога приложение не работает: показываем только красный баннер, аудиты скрыты,
+  // «Добавить»/поиск заблокированы (actionsDisabled). Меню остаётся активным — им и грузят каталог.
+  if (!hasCatalog) {
+    content.push(h('div', { class: 'catalog-missing', text: 'Каталог пуст. Откройте меню (☰) → «Обновить каталог» и выберите файл (.xlsx) с листами «Иерархия» и «Замечания».' }));
+    return screenFrame({ title: 'АУДИТОР', fabLeft: menuBtn, content, onAdd, actionsDisabled: true });
+  }
 
   const audits = [...state.audits].sort((a, b) => b.time - a.time);
   const list = h('ul', { class: 'list' }, audits.map((a) =>
     navRow({ title: a.name || '(без названия)', sub: formatDate(a.time), count: countAudit(a), onClick: () => navTo({ kind: 'audit', audit: a }) }),
   ));
-
-  const content: (Node | null)[] = [];
-  if (!state.catalog) content.push(h('div', { class: 'empty-note', text: 'Каталог пуст. Откройте меню (☰) → «Обновить каталог» и выберите файл (.xlsx) с листами «Иерархия» и «Замечания».' }));
   content.push(sectionHeader('Аудиты'));
   if (audits.length === 0) content.push(h('div', { class: 'empty-note', text: 'Аудитов пока нет. Нажмите «Добавить».' }));
   content.push(list);
 
-  return screenFrame({
-    title: 'АУДИТОР',
-    fabLeft: menuBtn,
-    content,
-    onAdd: { kind: 'inline', create: (name) => {
-      state.audits.push({ id: uid(), name, time: nowSec(), buildings: [] }); // самый свежий → в начало списка
-      persistAudits();
-    } },
-  });
+  return screenFrame({ title: 'АУДИТОР', fabLeft: menuBtn, content, onAdd });
+}
+
+// Очистка каталога с подтверждением. Пользовательские замечания сохраняются.
+function confirmClearCatalog(): void {
+  confirmDelete(
+    'Каталог будет удалён. Пользовательские замечания сохранятся.',
+    () => { clearCatalog(); rerender(); },
+    { title: 'Очистить каталог?', confirmLabel: 'Очистить', suffix: '' },
+  );
 }
 
 // ================= ЭКРАН: АУДИТ (список зданий, §6.4) =================
@@ -838,17 +858,22 @@ function openMenu(anchor: HTMLElement, items: { label: string; onClick: () => vo
 
 // ================= ДИАЛОГ ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ (§6.9) =================
 
-function confirmDelete(message: string, onConfirm: () => void): void {
+function confirmDelete(
+  message: string,
+  onConfirm: () => void,
+  opts?: { title?: string; confirmLabel?: string; suffix?: string },
+): void {
   const backEl = h('div', { class: 'alert-back' });
   const close = () => backEl.remove();
+  const suffix = opts?.suffix ?? 'Действие необратимо.';
   const alert = h('div', { class: 'alert' }, [
     h('div', { class: 'alert__body center' }, [
-      h('b', { text: 'Удалить?' }),
-      h('p', { text: `${message} Действие необратимо.` }),
+      h('b', { text: opts?.title ?? 'Удалить?' }),
+      h('p', { text: [message, suffix].filter(Boolean).join(' ') }),
     ]),
     h('div', { class: 'alert__acts' }, [
       h('button', { text: 'Отмена', onclick: close }),
-      h('button', { class: 'danger', text: 'Удалить', onclick: () => { close(); onConfirm(); } }),
+      h('button', { class: 'danger', text: opts?.confirmLabel ?? 'Удалить', onclick: () => { close(); onConfirm(); } }),
     ]),
   ]);
   backEl.append(alert);
