@@ -7,6 +7,7 @@ test('замечание из листа → отмечено в листе и �
 
   await page.getByRole('button', { name: 'Добавить' }).click();
   await expect(page.locator('.modal-back.open')).toBeVisible();
+  await expect(page.locator('.modal textarea')).toBeFocused(); // фокус сразу на тексте замечания
   await page.locator('.modal textarea').fill('Моё уникальное замечание');
   await page.locator('.modal .cat-input').fill('Моя категория');
   await page.locator('.modal .save').click();

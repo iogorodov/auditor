@@ -1,0 +1,53 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e70]:
+    - generic [ref=f1e71]:
+      - button "‹" [ref=f1e72] [cursor=pointer]
+      - generic [ref=f1e73]: Мои замечания
+    - generic [ref=f1e75]:
+      - generic [ref=f1e76]: Замечания
+      - generic [ref=f1e77]:
+        - list [ref=f1e78]:
+          - listitem [ref=f1e79] [cursor=pointer]:
+            - generic [ref=f1e80]: ▸
+            - generic [ref=f1e81]: Прочее
+            - generic [ref=f1e83]: "1"
+        - list [ref=f1e85]:
+          - listitem [ref=f1e86] [cursor=pointer]:
+            - generic [ref=f1e87]: Проверка выделения текста замечания
+    - generic:
+      - button "⤓" [ref=f1e89] [cursor=pointer]
+      - button "Добавить" [ref=f1e90] [cursor=pointer]
+      - button "⌕" [ref=f1e91] [cursor=pointer]
+    - text: ⌕
+  - generic [ref=f1e93]:
+    - generic [ref=f1e94]:
+      - button "Отмена" [ref=f1e95] [cursor=pointer]
+      - generic [ref=f1e96]: Замечание
+    - generic [ref=f1e97]:
+      - generic [ref=f1e98]: Текст
+      - textbox "Текст замечания (можно в несколько строк)" [active] [ref=f1e99]: Проверка выделения текста замечания
+      - generic [ref=f1e100]: Категория
+      - combobox "Выберите или введите" [ref=f1e101]: Прочее
+      - generic [ref=f1e102]: Применимо к
+      - generic [ref=f1e103]:
+        - generic [ref=f1e104] [cursor=pointer]:
+          - checkbox "Документация" [checked] [ref=f1e105]
+          - text: Документация
+        - generic [ref=f1e106] [cursor=pointer]:
+          - checkbox "Другое" [checked] [ref=f1e107]
+          - text: Другое
+        - generic [ref=f1e108] [cursor=pointer]:
+          - checkbox "Здание" [checked] [ref=f1e109]
+          - text: Здание
+        - generic [ref=f1e110] [cursor=pointer]:
+          - checkbox "Общее" [checked] [ref=f1e111]
+          - text: Общее
+        - generic [ref=f1e112] [cursor=pointer]:
+          - checkbox "Помещение" [checked] [ref=f1e113]
+          - text: Помещение
+        - generic [ref=f1e114] [cursor=pointer]:
+          - checkbox "Щит / панель" [checked] [ref=f1e115]
+          - text: Щит / панель
+    - generic [ref=f1e116]:
+      - button "Удалить" [ref=f1e117] [cursor=pointer]
+      - button "Сохранить" [ref=f1e118] [cursor=pointer]

@@ -108,6 +108,12 @@ test('правка названия через модалку ✎', async ({ pag
   await expect(page.locator('.modal-back.open')).toBeVisible();
   await expect(page.locator('.modal .field-input')).toHaveValue('Аудит 1');
 
+  // При открытии — фокус на поле и весь текст выделен.
+  await expect(page.locator('.modal .field-input')).toBeFocused();
+  expect(await page.locator('.modal .field-input').evaluate(
+    (el: HTMLInputElement) => el.selectionStart === 0 && el.selectionEnd === el.value.length,
+  )).toBe(true);
+
   // Esc закрывает диалог без сохранения: заголовок не меняется.
   await page.locator('.modal .field-input').fill('Зря введённое');
   await page.keyboard.press('Escape');

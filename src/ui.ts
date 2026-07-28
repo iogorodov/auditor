@@ -759,7 +759,8 @@ function openRemarkModal(opts: ModalOpts): void {
   backEl.addEventListener('click', (e) => { if (e.target === backEl) close(); });
   document.body.append(backEl);
   syncSave();
-  requestAnimationFrame(() => backEl.classList.add('open'));
+  // Фокус на текст замечания + выделение всего (после .open — до него контейнер в display:none).
+  requestAnimationFrame(() => { backEl.classList.add('open'); textArea.focus(); textArea.select(); });
 }
 
 // ================= МОДАЛКА ПРАВКИ НАЗВАНИЯ =================
@@ -810,7 +811,8 @@ function openNameModal(o: {
   backEl.addEventListener('click', (e) => { if (e.target === backEl) close(); });
   document.body.append(backEl);
   syncSave();
-  requestAnimationFrame(() => backEl.classList.add('open'));
+  // Фокус + выделение всего текста — только после .open (до него .modal-back в display:none).
+  requestAnimationFrame(() => { backEl.classList.add('open'); input.focus(); input.select(); });
 }
 
 // ================= ВЫПАДАЮЩЕЕ МЕНЮ =================

@@ -1,0 +1,12 @@
+- generic [ref=f1e33]:
+  - generic [ref=f1e34]:
+    - button "‹" [ref=f1e35] [cursor=pointer]
+    - generic [ref=f1e36]: Мои замечания
+  - generic [ref=f1e38]:
+    - generic [ref=f1e39]: Замечания
+    - generic [ref=f1e40]: Пользовательских замечаний пока нет.
+  - generic:
+    - button "⤓" [ref=f1e41] [cursor=pointer]
+    - button "Добавить" [ref=f1e42] [cursor=pointer]
+    - button "⌕" [ref=f1e43] [cursor=pointer]
+  - text: ⌕

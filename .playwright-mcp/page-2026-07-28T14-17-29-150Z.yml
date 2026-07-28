@@ -1,0 +1,28 @@
+- generic [ref=e1]:
+  - generic [ref=e29]:
+    - generic [ref=e30]:
+      - button "‹" [ref=e31] [cursor=pointer]
+      - generic [ref=e32]: Аудит на Мира
+      - button "✎" [ref=e35] [cursor=pointer]
+    - generic [ref=e36]:
+      - generic [ref=e37]: Здания
+      - list [ref=e38]:
+        - listitem [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]: ⠿
+          - generic [ref=e41]: Корпус А
+          - generic [ref=e43]: "0"
+    - generic:
+      - button "⤓" [ref=e44] [cursor=pointer]
+      - button "Добавить" [ref=e45] [cursor=pointer]
+      - button "⌕" [ref=e46] [cursor=pointer]
+    - text: ⌕
+  - generic [ref=e48]:
+    - generic [ref=e49]:
+      - button "Отмена" [ref=e50] [cursor=pointer]
+      - generic [ref=e51]: Название
+    - generic [ref=e52]:
+      - generic [ref=e53]: Название
+      - textbox [active] [ref=e54]: Аудит на Мира
+    - generic [ref=e55]:
+      - button "Удалить" [ref=e56] [cursor=pointer]
+      - button "Сохранить" [ref=e57] [cursor=pointer]
