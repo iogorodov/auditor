@@ -96,6 +96,7 @@ interface FrameOpts {
   back?: boolean;
   actions?: HTMLElement[];
   content: (Node | null)[];
+  onAdd?: () => void; // синяя кнопка «Добавить» внизу по центру (действие добавления экрана)
   searchKind?: 'list' | 'remarks';
 }
 
@@ -108,8 +109,9 @@ function screenFrame(opts: FrameOpts): HTMLElement {
 
   const content = h('div', { class: 'screen__content' }, opts.content);
 
-  // Внизу-справа — только круглая кнопка поиска (лупа). По ней снизу раскрывается поле ввода
-  // (+ «Отмена»). Кнопки «Добавить» здесь нет — добавление живёт в заголовках секций.
+  // Внизу: синяя «Добавить» по центру (действие добавления экрана) + круглая кнопка поиска (лупа)
+  // справа. По лупе снизу раскрывается поле ввода (+ «Отмена»). Поведение «Добавить» — то же
+  // inline-добавление, что и раньше в заголовках секций (§6.1).
   const searchInput = h('input', { placeholder: 'Поиск' }) as HTMLInputElement;
   const clearBtn = h('button', { class: 'clear', text: '✕' });
   const searchWrap = h('span', { class: 'search' }, [searchInput, clearBtn]);
@@ -117,7 +119,11 @@ function screenFrame(opts: FrameOpts): HTMLElement {
   const searchBar = h('div', { class: 'searchbar' }, [searchWrap, cancelBtn]);
 
   const toggleBtn = h('button', { class: 'fab-search', title: 'Поиск', text: '⌕' });
-  const controls = h('div', { class: 'screen__controls' }, [toggleBtn, searchBar]);
+  const controls = h('div', { class: 'screen__controls' }, [
+    opts.onAdd ? h('div', { class: 'fab-bar' }, [h('button', { class: 'fab-add', text: 'Добавить', onclick: opts.onAdd })]) : null,
+    toggleBtn,
+    searchBar,
+  ]);
 
   const screen = h('section', { class: 'screen' }, [header, content, controls]);
   wireSearch({ screen, controls, input: searchInput, clearBtn, wrap: searchWrap, toggleBtn, cancelBtn, kind: opts.searchKind ?? 'list' });
@@ -305,11 +311,11 @@ function screenAudits(): HTMLElement {
 
   const content: (Node | null)[] = [];
   if (!state.catalog) content.push(h('div', { class: 'empty-note', text: 'Каталог пуст. Нажмите ↻ и выберите файл каталога (.xlsx) с листами «Иерархия» и «Замечания».' }));
-  content.push(sectionHeader('Аудиты', addAudit));
+  content.push(sectionHeader('Аудиты'));
   if (audits.length === 0) content.push(h('div', { class: 'empty-note', text: 'Аудитов пока нет. Нажмите «Добавить».' }));
   content.push(list);
 
-  return screenFrame({ title: 'АУДИТОР', actions: [star, refresh], content });
+  return screenFrame({ title: 'АУДИТОР', actions: [star, refresh], content, onAdd: addAudit });
 }
 
 // ================= ЭКРАН: АУДИТ (список зданий, §6.4) =================
@@ -364,10 +370,11 @@ function screenAudit(audit: Audit): HTMLElement {
           back();
         }),
       }),
-      sectionHeader('Здания', addBuilding),
+      sectionHeader('Здания'),
       audit.buildings.length ? null : h('div', { class: 'empty-note', text: 'Зданий пока нет.' }),
       list, // всегда в DOM (может быть пустым) — сюда встаёт inline-строка добавления
     ],
+    onAdd: addBuilding,
   });
 }
 
@@ -394,15 +401,17 @@ function screenBuilding(audit: Audit, building: AuditBuilding): HTMLElement {
   }
 
   const entries = resolveLevel1(building.nodes, tmpl);
-  appendLevel1(content, entries, audit, building);
+  const onAdd = appendLevel1(content, entries, audit, building);
 
-  return screenFrame({ title: 'ЗДАНИЕ', back: true, content });
+  return screenFrame({ title: 'ЗДАНИЕ', back: true, content, onAdd });
 }
 
 // Рендер записей уровня 1: фикс-узлы строками, изменяемая группа — подпись + drag-список.
-function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[], audit: Audit, building: AuditBuilding): void {
+// Возвращает действие добавления (inline) изменяемой группы — для кнопки «Добавить» внизу.
+function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[], audit: Audit, building: AuditBuilding): (() => void) | undefined {
   const fixedRows: HTMLLIElement[] = [];
   const groups: HTMLElement[] = [];
+  let onAdd: (() => void) | undefined;
   for (const e of entries) {
     if (e.kind === 'fixed') {
       fixedRows.push(navRow({ title: e.node.name, count: e.node.count, onClick: () => openL1(audit, building, e.node) }));
@@ -413,15 +422,16 @@ function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[
         return li;
       }));
       makeSortable(ul, building.nodes, (next) => { building.nodes = next; touchAudit(audit); rerender(); });
-      const addNode = () => startInlineAdd(ul, (name) => {
+      onAdd = () => startInlineAdd(ul, (name) => {
         building.nodes.push({ name, nodes: [] });
         touchAudit(audit);
       });
-      groups.push(h('div', {}, [sectionHeader(e.slotName, addNode), ul]));
+      groups.push(h('div', {}, [sectionHeader(e.slotName), ul]));
     }
   }
   if (fixedRows.length) content.push(h('ul', { class: 'list' }, fixedRows));
   content.push(...groups);
+  return onAdd;
 }
 
 // Открыть узел уровня 1 (материализуем фикс-узел при необходимости).
@@ -462,6 +472,7 @@ function screenL1(route: Route & { kind: 'l1' }): HTMLElement {
 
   const fixedRows: HTMLLIElement[] = [];
   const groups: HTMLElement[] = [];
+  let onAdd: (() => void) | undefined;
   for (const e of entries) {
     if (e.kind === 'fixed') {
       fixedRows.push(navRow({ title: e.node.name, count: e.node.count, onClick: () => openLeaf(audit, building, node, slotName, e.node) }));
@@ -472,17 +483,17 @@ function screenL1(route: Route & { kind: 'l1' }): HTMLElement {
         return li;
       }));
       makeSortable(ul, node.nodes, (next) => { node.nodes = next; touchAudit(audit); rerender(); });
-      const addLeaf = () => startInlineAdd(ul, (name) => {
+      onAdd = () => startInlineAdd(ul, (name) => {
         node.nodes.push({ name, remarks: [] });
         touchAudit(audit);
       });
-      groups.push(h('div', {}, [sectionHeader(e.slotName, addLeaf), ul]));
+      groups.push(h('div', {}, [sectionHeader(e.slotName), ul]));
     }
   }
   if (fixedRows.length) content.push(h('ul', { class: 'list' }, fixedRows));
   content.push(...groups);
 
-  return screenFrame({ title: fixed ? slotName : (node.name || 'Узел'), back: true, content });
+  return screenFrame({ title: fixed ? slotName : (node.name || 'Узел'), back: true, content, onAdd });
 }
 
 function openLeaf(audit: Audit, building: AuditBuilding, l1: AuditLevel1Node, l1SlotName: string, leaf: ResolvedLeaf): void {
@@ -523,11 +534,17 @@ function screenLeaf(route: Route & { kind: 'leaf' }): HTMLElement {
     parentSlotName: l1SlotName,
   });
 
-  content.push(sectionHeader('Замечания', () => openRemarkModal({ mode: 'new', checkInLeaf: node, audit })));
+  content.push(sectionHeader('Замечания'));
   if (cats.length === 0) content.push(h('div', { class: 'empty-note', text: 'Нет применимых замечаний. Нажмите «Добавить».' }));
   for (const cat of cats) content.push(renderCategoryBlock(cat.name, cat.items, cat.selected, cat.total, node, audit));
 
-  return screenFrame({ title: fixed ? slotName : (node.name || 'Лист'), back: true, content, searchKind: 'remarks' });
+  return screenFrame({
+    title: fixed ? slotName : (node.name || 'Лист'),
+    back: true,
+    content,
+    searchKind: 'remarks',
+    onAdd: () => openRemarkModal({ mode: 'new', checkInLeaf: node, audit }),
+  });
 }
 
 // Блок категории: сворачиваемая строка + группа замечаний с чекбоксами.
@@ -598,7 +615,7 @@ function screenMyRemarks(): HTMLElement {
   }
   const cats = [...byCat.keys()].sort(categoryCompare);
 
-  content.push(sectionHeader('Замечания', () => openRemarkModal({ mode: 'new' })));
+  content.push(sectionHeader('Замечания'));
   if (state.userRemarks.length === 0) content.push(h('div', { class: 'empty-note', text: 'Пользовательских замечаний пока нет.' }));
 
   for (const cat of cats) {
@@ -622,7 +639,14 @@ function screenMyRemarks(): HTMLElement {
     content.push(h('div', { class: 'cat-block' }, [h('ul', { class: 'list' }, [catRow]), group]));
   }
 
-  return screenFrame({ title: 'Мои замечания', back: true, actions: [exportBtn], content, searchKind: 'remarks' });
+  return screenFrame({
+    title: 'Мои замечания',
+    back: true,
+    actions: [exportBtn],
+    content,
+    searchKind: 'remarks',
+    onAdd: () => openRemarkModal({ mode: 'new' }),
+  });
 }
 
 // ================= МОДАЛКА ЗАМЕЧАНИЯ (§6.8) =================
