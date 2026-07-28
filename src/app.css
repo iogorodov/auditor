@@ -41,8 +41,10 @@ body {
      всю страницу вверх при фокусе на поле и шапка уезжает за край. */
   overflow: hidden;
 }
-/* --app-height задаётся из visualViewport (src/viewport.ts); фолбэк 100% для старых движков. */
-#app { height: var(--app-height, 100%); display: flex; flex-direction: column; max-width: 560px; margin: 0 auto;
+/* #app жёстко прикреплён к visualViewport: position: fixed, а height/transform выставляет
+   src/viewport.ts из visualViewport (height + offsetTop). Фолбэк — на весь экран. */
+#app { position: fixed; top: 0; left: 0; right: 0; height: 100%; max-width: 560px; margin: 0 auto;
+  display: flex; flex-direction: column;
   border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 
 /* ================= КАРКАС ЭКРАНА ================= */
