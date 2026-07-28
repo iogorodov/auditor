@@ -26,11 +26,38 @@ type Route =
 
 let app: HTMLElement;
 const stack: Route[] = [{ kind: 'audits' }];
+// Закрытие открытого нижнего бара (поиск/добавление) текущего экрана — задаётся в screenFrame.
+// Нужно, чтобы системная «Назад» сперва закрывала бар/оверлей, а не проваливала экран.
+let activeCloseBars: () => boolean = () => false;
 
 export function startUI(root: HTMLElement): void {
   app = root;
   onPersistError(showPersistError);
+  // Навигация синхронизирована с History API: одна запись истории на экран (URL не меняем —
+  // остаётся /auditor/). Системная/аппаратная «Назад» приходит через popstate.
+  history.replaceState({ depth: stack.length }, '');
+  window.addEventListener('popstate', onPopState);
   render();
+}
+
+// Системная «Назад»/«Вперёд». Сначала гасим открытый оверлей (модалка/диалог/бар), «съедая» шаг.
+// Иначе — попытка подняться на экран выше с тем же guard, что и внутренняя кнопка.
+function onPopState(e: PopStateEvent): void {
+  if (closeTopOverlay()) { history.pushState({ depth: stack.length }, ''); return; }
+  const targetDepth = (e.state && typeof (e.state as { depth?: number }).depth === 'number')
+    ? (e.state as { depth: number }).depth : 1;
+  if (targetDepth >= stack.length) return; // не «назад» (вперёд/корень) — форвард-навигацию не восстанавливаем
+  if (!canLeave()) { history.pushState({ depth: stack.length }, ''); return; } // пустое имя блокирует — вернуть запись
+  while (stack.length > targetDepth && stack.length > 1) stack.pop();
+  render();
+}
+
+// Закрыть верхний оверлей, если открыт. Порядок: модалка/диалог (в body) → нижний бар экрана.
+function closeTopOverlay(): boolean {
+  const overlays = document.querySelectorAll('.modal-back, .alert-back');
+  const top = overlays[overlays.length - 1];
+  if (top) { top.remove(); return true; }
+  return activeCloseBars();
 }
 
 // Баннер о сбое автосохранения (§7): данные под угрозой, сообщение висит, пока не закрыто.
@@ -48,13 +75,14 @@ function showPersistError(): void {
 function navTo(route: Route): void {
   if (!canLeave()) return; // уход вглубь тоже требует заданного имени (§7)
   stack.push(route);
+  history.pushState({ depth: stack.length }, '');
   render();
 }
 
+// Внутренняя кнопка ‹ и программные возвраты после удаления — через историю: единый путь,
+// pop и guard живут в onPopState.
 function back(): void {
-  if (!canLeave()) return;
-  if (stack.length > 1) stack.pop();
-  render();
+  history.back();
 }
 
 // Уход с экрана запрещён, пока обязательное имя не задано (§7).
@@ -146,6 +174,7 @@ function screenFrame(opts: FrameOpts): HTMLElement {
   searchCancel.addEventListener('click', closeSearch);
 
   // --- добавление ---
+  let cancelAdd = () => {}; // отмена открытого бара добавления (для «Назад»)
   if (opts.onAdd && addPill) {
     const spec = opts.onAdd;
     if (spec.kind === 'modal') {
@@ -160,6 +189,7 @@ function screenFrame(opts: FrameOpts): HTMLElement {
         screen.classList.remove('adding');
         if (name && !cancelled) { spec.create(name); rerender(); }
       };
+      cancelAdd = () => { cancelled = true; finish(); };
       addPill.addEventListener('click', () => {
         addInput.value = ''; done = false; cancelled = false;
         screen.classList.add('adding'); addInput.focus();
@@ -172,6 +202,13 @@ function screenFrame(opts: FrameOpts): HTMLElement {
       addCancel.addEventListener('click', () => { cancelled = true; finish(); });
     }
   }
+
+  // Закрытие открытого нижнего бара по «Назад» (см. onPopState → closeTopOverlay).
+  activeCloseBars = () => {
+    if (screen.classList.contains('searching')) { closeSearch(); return true; }
+    if (screen.classList.contains('adding')) { cancelAdd(); return true; }
+    return false;
+  };
 
   return screen;
 }

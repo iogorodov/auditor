@@ -69,6 +69,38 @@ test('пустой ввод ничего не создаёт, непустой �
   await expect(page.locator('li.row').filter({ hasText: 'Аудит 1' })).toBeVisible();
 });
 
+// Навигация интегрирована с History API: системная «Назад» ходит по стеку экранов,
+// закрывает открытый бар и уважает guard пустого имени.
+test('системная «Назад»: экраны, закрытие поиска, guard пустого имени', async ({ page }) => {
+  await page.goto('/');
+  await updateCatalog(page);
+  await addAndOpen(page, 'Аудит 1'); // → АУДИТ
+  await addAndOpen(page, 'Гараж');    // → ЗДАНИЕ
+  await expect(page.locator('.screen__title')).toHaveText('ЗДАНИЕ');
+
+  // Системная «назад» поднимает на экран выше.
+  await page.goBack();
+  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+
+  // Открытый поиск «назад» закрывает, экран не меняется.
+  await page.getByTitle('Поиск').click();
+  await expect(page.locator('.inputbar--search input')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('.inputbar--search input')).toBeHidden();
+  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+
+  // Пустое имя блокирует системную «назад».
+  await page.locator('.namebar input').fill('');
+  await page.goBack();
+  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+  await expect(page.locator('.namebar input')).toHaveClass(/invalid/);
+
+  // Имя задано — «назад» уводит на список аудитов.
+  await page.locator('.namebar input').fill('Аудит 1');
+  await page.goBack();
+  await expect(page.locator('.screen__title')).toHaveText('АУДИТОР');
+});
+
 // §7: у элемента с содержимым пустое имя блокирует любой уход — и «назад», и вглубь.
 test('пустое имя блокирует назад и переход в дочернюю строку', async ({ page }) => {
   await page.goto('/');
