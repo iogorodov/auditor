@@ -13,3 +13,11 @@ if (root) {
     console.error(e);
   });
 }
+
+// PWA (V3/3б): регистрируем Service Worker. Относительный URL → scope в пределах /auditor/.
+// В dev-сервере sw.js нет — регистрация тихо отваливается (catch), приложение работает как есть.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
