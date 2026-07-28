@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { gotoNewLeaf } from './helpers';
+import { gotoNewLeaf, openMenuItem } from './helpers';
 
 // §6.6/§6.8: создание замечания из листа — попадает в лист (отмечено) и в «Мои замечания».
 test('замечание из листа → отмечено в листе и есть в «Мои замечания»', async ({ page }) => {
@@ -16,8 +16,8 @@ test('замечание из листа → отмечено в листе и �
 
   // Назад к списку аудитов и в «Мои замечания».
   for (let i = 0; i < 4; i++) await page.locator('.screen__back').click();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТОР');
-  await page.getByTitle('Мои замечания').click();
+  await expect(page.locator('.screen__title .ttl')).toHaveText('АУДИТОР');
+  await openMenuItem(page, 'Мои замечания');
   await expect(page.getByText('Моё уникальное замечание')).toBeVisible();
   await expect(page.locator('.row--category').filter({ hasText: 'Моя категория' })).toBeVisible();
 });
@@ -42,11 +42,13 @@ test('удаление здания через подтверждение', asyn
   // Поднимаемся на экран здания.
   await page.locator('.screen__back').click(); // → уровень 1
   await page.locator('.screen__back').click(); // → здание
-  await expect(page.locator('.screen__title')).toHaveText('ЗДАНИЕ');
-  await page.locator('.del').click();
+  await expect(page.locator('.screen__title .ttl')).toHaveText('Здание');
+  // Удаление — через модалку правки названия (✎) с подтверждением.
+  await page.getByTitle('Изменить название').click();
+  await page.locator('.modal .delete').click();
   await expect(page.locator('.alert-back.open')).toBeVisible();
   await page.locator('.alert__acts .danger').click();
   // Вернулись на аудит, здания нет.
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+  await expect(page.locator('.screen__title .ttl')).toHaveText('Аудит');
   await expect(page.locator('.row__title').filter({ hasText: 'Здание' })).toHaveCount(0);
 });

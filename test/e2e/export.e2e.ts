@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
-import { gotoNewLeaf, updateCatalog } from './helpers';
+import { gotoNewLeaf, openMenuItem, updateCatalog } from './helpers';
 import { readXlsxSheets } from '../../src/xlsx/xlsx-read';
 
 // V2: экспорт аудита в xlsx — скачанный файл читается и содержит строки формата заказчика.
@@ -15,7 +15,7 @@ test('экспорт аудита в xlsx', async ({ page }) => {
 
   // Назад на экран аудита (лист → узел → здание → аудит) и экспорт.
   for (let i = 0; i < 3; i++) await page.locator('.screen__back').click();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+  await expect(page.locator('.screen__title .ttl')).toHaveText('Аудит');
   const downloadEvent = page.waitForEvent('download');
   await page.getByTitle('Экспорт аудита').click();
   const download = await downloadEvent;
@@ -34,7 +34,7 @@ test('экспорт аудита в xlsx', async ({ page }) => {
 test('экспорт пользовательских замечаний в xlsx', async ({ page }) => {
   await page.goto('/');
   await updateCatalog(page);
-  await page.getByTitle('Мои замечания').click();
+  await openMenuItem(page, 'Мои замечания');
 
   // Создать пользовательское замечание.
   await page.getByRole('button', { name: 'Добавить' }).click();

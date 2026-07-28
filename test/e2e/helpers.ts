@@ -15,10 +15,16 @@ export async function makeCatalogXlsx(sheets: { name: string; rows: string[][] }
   return Buffer.from(await buildXlsxFile(worksheets));
 }
 
-// Нажать ↻ и выбрать файл каталога (по умолчанию — реальная фикстура catalog.xlsx).
+// Открыть меню (☰) на списке аудитов и выбрать пункт по подписи.
+export async function openMenuItem(page: Page, label: string): Promise<void> {
+  await page.getByTitle('Меню').click();
+  await page.getByRole('button', { name: label }).click();
+}
+
+// Меню → «Обновить каталог» → выбрать файл (по умолчанию — реальная фикстура catalog.xlsx).
 export async function chooseCatalogFile(page: Page, buffer?: Buffer): Promise<void> {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByTitle('Обновить каталог').click();
+  await openMenuItem(page, 'Обновить каталог');
   await (await chooser).setFiles(
     buffer
       ? { name: 'catalog.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer }

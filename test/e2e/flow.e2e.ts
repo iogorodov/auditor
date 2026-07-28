@@ -1,20 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { addAndOpen, commitInline, updateCatalog } from './helpers';
 
+// Видимый текст заголовка экрана (без кнопки правки ✎).
+const ttl = '.screen__title .ttl';
+
 // §8: создать аудит → добавить узлы → отметить замечания → счётчики → перезагрузка (персист).
 test('полный поток: аудит → узлы → отметка → счётчики → персист', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТОР');
+  await expect(page.locator(ttl)).toHaveText('АУДИТОР');
   await updateCatalog(page);
 
-  // Создать аудит (inline) и войти; имя проставлено при создании.
+  // Создать аудит (inline) и войти; имя аудита становится заголовком экрана.
   await addAndOpen(page, 'Тестовый аудит');
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
-  await expect(page.locator('.namebar input')).toHaveValue('Тестовый аудит');
+  await expect(page.locator(ttl)).toHaveText('Тестовый аудит');
 
-  // Добавить здание.
+  // Добавить здание — его имя становится заголовком.
   await addAndOpen(page, 'Гараж');
-  await expect(page.locator('.screen__title')).toHaveText('ЗДАНИЕ');
+  await expect(page.locator(ttl)).toHaveText('Гараж');
 
   // Фиксированные узлы уровня 1 и группа изменяемого слота «Помещение».
   await expect(page.locator('.row__title', { hasText: 'Документация' })).toBeVisible();
@@ -65,61 +67,58 @@ test('пустой ввод ничего не создаёт, непустой �
 
   // Непустой ввод → аудит создан, остаёмся в списке (внутрь не переходим).
   await commitInline(page, 'Аудит 1');
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТОР');
+  await expect(page.locator(ttl)).toHaveText('АУДИТОР');
   await expect(page.locator('li.row').filter({ hasText: 'Аудит 1' })).toBeVisible();
 });
 
-// Навигация интегрирована с History API: системная «Назад» ходит по стеку экранов,
-// закрывает открытый бар и уважает guard пустого имени.
-test('системная «Назад»: экраны, закрытие поиска, guard пустого имени', async ({ page }) => {
+// Навигация интегрирована с History API: системная «Назад» ходит по стеку экранов
+// и сперва закрывает открытый бар поиска.
+test('системная «Назад»: экраны и закрытие поиска', async ({ page }) => {
   await page.goto('/');
   await updateCatalog(page);
-  await addAndOpen(page, 'Аудит 1'); // → АУДИТ
-  await addAndOpen(page, 'Гараж');    // → ЗДАНИЕ
-  await expect(page.locator('.screen__title')).toHaveText('ЗДАНИЕ');
+  await addAndOpen(page, 'Аудит 1'); // → аудит
+  await addAndOpen(page, 'Гараж');    // → здание
+  await expect(page.locator(ttl)).toHaveText('Гараж');
 
   // Системная «назад» поднимает на экран выше.
   await page.goBack();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+  await expect(page.locator(ttl)).toHaveText('Аудит 1');
 
   // Открытый поиск «назад» закрывает, экран не меняется.
   await page.getByTitle('Поиск').click();
   await expect(page.locator('.inputbar--search input')).toBeVisible();
   await page.goBack();
   await expect(page.locator('.inputbar--search input')).toBeHidden();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+  await expect(page.locator(ttl)).toHaveText('Аудит 1');
 
-  // Пустое имя блокирует системную «назад».
-  await page.locator('.namebar input').fill('');
+  // «Назад» уводит на список аудитов.
   await page.goBack();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
-  await expect(page.locator('.namebar input')).toHaveClass(/invalid/);
-
-  // Имя задано — «назад» уводит на список аудитов.
-  await page.locator('.namebar input').fill('Аудит 1');
-  await page.goBack();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТОР');
+  await expect(page.locator(ttl)).toHaveText('АУДИТОР');
 });
 
-// §7: у элемента с содержимым пустое имя блокирует любой уход — и «назад», и вглубь.
-test('пустое имя блокирует назад и переход в дочернюю строку', async ({ page }) => {
+// Правка названия через модалку (✎): сохранение обновляет заголовок; пустое имя блокирует «Сохранить».
+test('правка названия через модалку ✎', async ({ page }) => {
   await page.goto('/');
   await updateCatalog(page);
-  await addAndOpen(page, 'Аудит 1'); // создаём аудит и входим
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ');
+  await addAndOpen(page, 'Аудит 1'); // → аудит, заголовок «Аудит 1»
+  await expect(page.locator(ttl)).toHaveText('Аудит 1');
 
-  // Добавляем здание inline (остаёмся на экране аудита).
-  await commitInline(page, 'Гараж');
-  await expect(page.locator('li.row').filter({ hasText: 'Гараж' })).toBeVisible();
+  // ✎ (у правого края шапки) → модалка с одним полем.
+  await page.getByTitle('Изменить название').click();
+  await expect(page.locator('.modal-back.open')).toBeVisible();
+  await expect(page.locator('.modal .field-input')).toHaveValue('Аудит 1');
 
-  await page.locator('.namebar input').fill(''); // стёрли имя аудита
-  await page.locator('.screen__back').click();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ'); // назад заблокирован
-  await expect(page.locator('.namebar input')).toHaveClass(/invalid/);
-  await page.locator('li.row').filter({ hasText: 'Гараж' }).click();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТ'); // вглубь тоже нельзя
+  // Пустое имя → «Сохранить» недоступно.
+  await page.locator('.modal .field-input').fill('');
+  await expect(page.locator('.modal .save')).toBeDisabled();
 
-  await page.locator('.namebar input').fill('Названо');
-  await page.locator('.screen__back').click();
-  await expect(page.locator('.screen__title')).toHaveText('АУДИТОР'); // теперь ушли
+  // Новое имя → сохранить → заголовок обновился, модалка закрылась.
+  await page.locator('.modal .field-input').fill('Переименованный');
+  await page.locator('.modal .save').click();
+  await expect(page.locator('.modal-back')).toHaveCount(0);
+  await expect(page.locator(ttl)).toHaveText('Переименованный');
+
+  // Имя сохранилось в списке аудитов.
+  await page.goBack();
+  await expect(page.locator('li.row').filter({ hasText: 'Переименованный' })).toBeVisible();
 });

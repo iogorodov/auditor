@@ -47,14 +47,13 @@ function onPopState(e: PopStateEvent): void {
   const targetDepth = (e.state && typeof (e.state as { depth?: number }).depth === 'number')
     ? (e.state as { depth: number }).depth : 1;
   if (targetDepth >= stack.length) return; // не «назад» (вперёд/корень) — форвард-навигацию не восстанавливаем
-  if (!canLeave()) { history.pushState({ depth: stack.length }, ''); return; } // пустое имя блокирует — вернуть запись
   while (stack.length > targetDepth && stack.length > 1) stack.pop();
   render();
 }
 
-// Закрыть верхний оверлей, если открыт. Порядок: модалка/диалог (в body) → нижний бар экрана.
+// Закрыть верхний оверлей, если открыт. Порядок: модалка/диалог/меню (в body) → нижний бар экрана.
 function closeTopOverlay(): boolean {
-  const overlays = document.querySelectorAll('.modal-back, .alert-back');
+  const overlays = document.querySelectorAll('.modal-back, .alert-back, .menu-back');
   const top = overlays[overlays.length - 1];
   if (top) { top.remove(); return true; }
   return activeCloseBars();
@@ -73,27 +72,15 @@ function showPersistError(): void {
 }
 
 function navTo(route: Route): void {
-  if (!canLeave()) return; // уход вглубь тоже требует заданного имени (§7)
   stack.push(route);
   history.pushState({ depth: stack.length }, '');
   render();
 }
 
 // Внутренняя кнопка ‹ и программные возвраты после удаления — через историю: единый путь,
-// pop и guard живут в onPopState.
+// pop живёт в onPopState.
 function back(): void {
   history.back();
-}
-
-// Уход с экрана запрещён, пока обязательное имя не задано (§7).
-function canLeave(): boolean {
-  const input = app.querySelector<HTMLInputElement>('input[data-required]');
-  if (input && normalize(input.value) === '') {
-    input.classList.add('invalid');
-    input.focus();
-    return false;
-  }
-  return true;
 }
 
 function render(): void {
@@ -128,17 +115,22 @@ type AddSpec =
 interface FrameOpts {
   title: string;
   back?: boolean;
-  actions?: HTMLElement[];
+  onEdit?: () => void; // ✎ у правого края шапки — правка названия текущего элемента (модалка)
   content: (Node | null)[];
   onAdd?: AddSpec; // синяя кнопка «Добавить» внизу по центру
+  fabLeft?: HTMLElement | null; // круглая кнопка слева от «Добавить» (экспорт / меню)
   searchKind?: 'list' | 'remarks';
 }
 
 function screenFrame(opts: FrameOpts): HTMLElement {
+  const title = h('div', { class: 'screen__title' }, [h('span', { class: 'ttl', text: opts.title })]);
+  const editBtn = opts.onEdit
+    ? h('button', { class: 'iconbtn', title: 'Изменить название', text: '✎', onclick: opts.onEdit })
+    : null;
   const header = h('header', { class: 'screen__header' }, [
     opts.back ? h('button', { class: 'screen__back', title: 'Назад', text: '‹', onclick: back }) : h('span'),
-    h('div', { class: 'screen__title', text: opts.title }),
-    h('div', { class: 'screen__hactions' }, opts.actions ?? []),
+    title,
+    h('div', { class: 'screen__hactions' }, editBtn ? [editBtn] : []),
   ]);
 
   const content = h('div', { class: 'screen__content' }, opts.content);
@@ -149,6 +141,7 @@ function screenFrame(opts: FrameOpts): HTMLElement {
   const lupa = h('button', { class: 'fab-search', title: 'Поиск', text: '⌕' });
   const addPill = opts.onAdd ? h('button', { class: 'fab-add', text: 'Добавить' }) : null;
   const overlay = h('div', { class: 'screen__overlay' }, [
+    opts.fabLeft ?? null,
     addPill ? h('div', { class: 'fab-bar' }, [addPill]) : null,
     lupa,
   ]);
@@ -248,38 +241,6 @@ function navRow(o: NavRowOpts): HTMLLIElement {
   return li;
 }
 
-// ================= ПОЛЕ «НАЗВАНИЕ» =================
-
-interface NameFieldOpts {
-  name: string;
-  required: boolean;
-  onInput: (value: string) => void;
-  onDelete: () => void;
-}
-
-function nameField(o: NameFieldOpts): HTMLElement {
-  const input = h('input', { value: o.name }) as HTMLInputElement;
-  if (o.required) input.dataset.required = '1';
-  const del = h('button', { class: 'del', title: 'Удалить', text: '🗑', onclick: o.onDelete });
-  const syncDel = () => { del.style.display = normalize(input.value) ? '' : 'none'; };
-  input.addEventListener('input', () => {
-    input.classList.remove('invalid');
-    o.onInput(input.value);
-    syncDel();
-  });
-  input.addEventListener('blur', () => {
-    const norm = normalize(input.value);
-    input.value = norm;
-    o.onInput(norm);
-    syncDel();
-  });
-  syncDel();
-  return h('div', { class: 'field' }, [
-    h('label', { text: 'Название' }),
-    h('div', { class: 'namebar' }, [input, del]),
-  ]);
-}
-
 // ================= ПОИСК =================
 
 // Один проход фильтрации текущего экрана по подстроке (списки строк или категории замечаний).
@@ -338,8 +299,11 @@ function makeSortable<T>(ul: HTMLElement, allNodes: T[], write: (next: T[]) => v
 // ================= ЭКРАН: СПИСОК АУДИТОВ (§6.3) =================
 
 function screenAudits(): HTMLElement {
-  const star = h('button', { class: 'iconbtn star', title: 'Мои замечания', text: '★', onclick: () => navTo({ kind: 'myremarks' }) });
-  const refresh = h('button', { class: 'iconbtn', title: 'Обновить каталог', text: '↻', onclick: () => runCatalogUpdate(refresh) });
+  const menuBtn = h('button', { class: 'fab-left', title: 'Меню', text: '☰' });
+  menuBtn.addEventListener('click', () => openMenu(menuBtn, [
+    { label: 'Мои замечания', onClick: () => navTo({ kind: 'myremarks' }) },
+    { label: 'Обновить каталог', onClick: () => runCatalogUpdate() },
+  ]));
 
   const audits = [...state.audits].sort((a, b) => b.time - a.time);
   const list = h('ul', { class: 'list' }, audits.map((a) =>
@@ -347,14 +311,14 @@ function screenAudits(): HTMLElement {
   ));
 
   const content: (Node | null)[] = [];
-  if (!state.catalog) content.push(h('div', { class: 'empty-note', text: 'Каталог пуст. Нажмите ↻ и выберите файл каталога (.xlsx) с листами «Иерархия» и «Замечания».' }));
+  if (!state.catalog) content.push(h('div', { class: 'empty-note', text: 'Каталог пуст. Откройте меню (☰) → «Обновить каталог» и выберите файл (.xlsx) с листами «Иерархия» и «Замечания».' }));
   content.push(sectionHeader('Аудиты'));
   if (audits.length === 0) content.push(h('div', { class: 'empty-note', text: 'Аудитов пока нет. Нажмите «Добавить».' }));
   content.push(list);
 
   return screenFrame({
     title: 'АУДИТОР',
-    actions: [star, refresh],
+    fabLeft: menuBtn,
     content,
     onAdd: { kind: 'inline', create: (name) => {
       state.audits.push({ id: uid(), name, time: nowSec(), buildings: [] }); // самый свежий → в начало списка
@@ -387,7 +351,7 @@ async function exportAudit(audit: Audit): Promise<void> {
 }
 
 function screenAudit(audit: Audit): HTMLElement {
-  const exportBtn = h('button', { class: 'iconbtn', title: 'Экспорт аудита', text: '⤓', onclick: () => void exportAudit(audit) });
+  const exportBtn = h('button', { class: 'fab-left', title: 'Экспорт аудита', text: '⤓', onclick: () => void exportAudit(audit) });
   const list = h('ul', { class: 'list' }, audit.buildings.map((b) => {
     const li = navRow({ title: b.name || '(без названия)', count: countBuilding(b), handle: true, onClick: () => navTo({ kind: 'building', audit, building: b }) });
     (li as unknown as { __node: AuditBuilding }).__node = b;
@@ -396,21 +360,17 @@ function screenAudit(audit: Audit): HTMLElement {
   makeSortable(list, audit.buildings, (next) => { audit.buildings = next; touchAudit(audit); rerender(); });
 
   return screenFrame({
-    title: 'АУДИТ',
+    title: audit.name || 'Аудит',
     back: true,
-    actions: [exportBtn],
+    onEdit: () => openNameModal({
+      name: audit.name,
+      onSave: (v) => { audit.name = v; touchAudit(audit); },
+      onDelete: () => { state.audits = state.audits.filter((a) => a !== audit); persistAudits(); back(); },
+      deleteMessage: `Аудит «${audit.name}» и все вложенные замечания будут удалены.`,
+    }),
+    fabLeft: exportBtn,
     onAdd: { kind: 'inline', create: (name) => { audit.buildings.push({ name, nodes: [] }); touchAudit(audit); } },
     content: [
-      nameField({
-        name: audit.name,
-        required: true,
-        onInput: (v) => { audit.name = v; touchAudit(audit); },
-        onDelete: () => confirmDelete(`Аудит «${audit.name}» и все вложенные замечания будут удалены.`, () => {
-          state.audits = state.audits.filter((a) => a !== audit);
-          persistAudits();
-          back();
-        }),
-      }),
       sectionHeader('Здания'),
       audit.buildings.length ? null : h('div', { class: 'empty-note', text: 'Зданий пока нет.' }),
       list,
@@ -422,28 +382,23 @@ function screenAudit(audit: Audit): HTMLElement {
 
 function screenBuilding(audit: Audit, building: AuditBuilding): HTMLElement {
   const tmpl = state.catalog?.hierarchy;
-  const content: (Node | null)[] = [
-    nameField({
-      name: building.name,
-      required: true,
-      onInput: (v) => { building.name = v; touchAudit(audit); },
-      onDelete: () => confirmDelete(`Здание «${building.name}» и все вложенные замечания будут удалены.`, () => {
-        audit.buildings = audit.buildings.filter((b) => b !== building);
-        touchAudit(audit);
-        back();
-      }),
-    }),
-  ];
+  const onEdit = () => openNameModal({
+    name: building.name,
+    onSave: (v) => { building.name = v; touchAudit(audit); },
+    onDelete: () => { audit.buildings = audit.buildings.filter((b) => b !== building); touchAudit(audit); back(); },
+    deleteMessage: `Здание «${building.name}» и все вложенные замечания будут удалены.`,
+  });
+  const content: (Node | null)[] = [];
 
   if (!tmpl) {
-    content.push(h('div', { class: 'empty-note', text: 'Иерархия не загружена. Обновите каталог (↻ на главном экране).' }));
-    return screenFrame({ title: 'ЗДАНИЕ', back: true, content });
+    content.push(h('div', { class: 'empty-note', text: 'Иерархия не загружена. Обновите каталог (☰ → «Обновить каталог» на главном экране).' }));
+    return screenFrame({ title: building.name || 'Здание', back: true, onEdit, content });
   }
 
   const entries = resolveLevel1(building.nodes, tmpl);
   const create = appendLevel1(content, entries, audit, building);
 
-  return screenFrame({ title: 'ЗДАНИЕ', back: true, content, onAdd: create ? { kind: 'inline', create } : undefined });
+  return screenFrame({ title: building.name || 'Здание', back: true, onEdit, content, onAdd: create ? { kind: 'inline', create } : undefined });
 }
 
 // Рендер записей уровня 1: фикс-узлы строками, изменяемая группа — подпись + drag-список.
@@ -473,7 +428,6 @@ function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[
 
 // Открыть узел уровня 1 (материализуем фикс-узел при необходимости).
 function openL1(audit: Audit, building: AuditBuilding, node: ResolvedL1): void {
-  if (!canLeave()) return; // не материализуем узел, если уход с экрана запрещён
   let real = node.source;
   if (!real) {
     real = { name: node.slotName, nodes: [] };
@@ -490,18 +444,12 @@ function screenL1(route: Route & { kind: 'l1' }): HTMLElement {
   const tmpl = state.catalog?.hierarchy;
   const content: (Node | null)[] = [];
 
-  if (!fixed) {
-    content.push(nameField({
-      name: node.name,
-      required: true,
-      onInput: (v) => { node.name = v; touchAudit(audit); },
-      onDelete: () => confirmDelete(`«${node.name}» и все вложенные замечания будут удалены.`, () => {
-        building.nodes = building.nodes.filter((n) => n !== node);
-        touchAudit(audit);
-        back();
-      }),
-    }));
-  }
+  const onEdit = fixed ? undefined : () => openNameModal({
+    name: node.name,
+    onSave: (v) => { node.name = v; touchAudit(audit); },
+    onDelete: () => { building.nodes = building.nodes.filter((n) => n !== node); touchAudit(audit); back(); },
+    deleteMessage: `«${node.name}» и все вложенные замечания будут удалены.`,
+  });
 
   const slot = tmpl?.level1.find((s) => nameKey(s.name) === nameKey(slotName));
   const leafSlots = slot ? slot.children : [];
@@ -527,11 +475,10 @@ function screenL1(route: Route & { kind: 'l1' }): HTMLElement {
   if (fixedRows.length) content.push(h('ul', { class: 'list' }, fixedRows));
   content.push(...groups);
 
-  return screenFrame({ title: fixed ? slotName : (node.name || 'Узел'), back: true, content, onAdd: create ? { kind: 'inline', create } : undefined });
+  return screenFrame({ title: fixed ? slotName : (node.name || 'Узел'), back: true, onEdit, content, onAdd: create ? { kind: 'inline', create } : undefined });
 }
 
 function openLeaf(audit: Audit, building: AuditBuilding, l1: AuditLevel1Node, l1SlotName: string, leaf: ResolvedLeaf): void {
-  if (!canLeave()) return; // не материализуем лист, если уход с экрана запрещён
   let real = leaf.source;
   if (!real) {
     real = { name: leaf.slotName, remarks: [] };
@@ -547,18 +494,12 @@ function screenLeaf(route: Route & { kind: 'leaf' }): HTMLElement {
   const { audit, l1, node, slotName, l1SlotName, fixed } = route;
   const content: (Node | null)[] = [];
 
-  if (!fixed) {
-    content.push(nameField({
-      name: node.name,
-      required: true,
-      onInput: (v) => { node.name = v; touchAudit(audit); },
-      onDelete: () => confirmDelete(`«${node.name}» и все вложенные замечания будут удалены.`, () => {
-        l1.nodes = l1.nodes.filter((n) => n !== node);
-        touchAudit(audit);
-        back();
-      }),
-    }));
-  }
+  const onEdit = fixed ? undefined : () => openNameModal({
+    name: node.name,
+    onSave: (v) => { node.name = v; touchAudit(audit); },
+    onDelete: () => { l1.nodes = l1.nodes.filter((n) => n !== node); touchAudit(audit); back(); },
+    deleteMessage: `«${node.name}» и все вложенные замечания будут удалены.`,
+  });
 
   const cats = resolveLeafRemarks({
     selectedTexts: node.remarks,
@@ -575,6 +516,7 @@ function screenLeaf(route: Route & { kind: 'leaf' }): HTMLElement {
   return screenFrame({
     title: fixed ? slotName : (node.name || 'Лист'),
     back: true,
+    onEdit,
     content,
     searchKind: 'remarks',
     onAdd: { kind: 'modal', open: () => openRemarkModal({ mode: 'new', checkInLeaf: node, audit }) },
@@ -636,7 +578,7 @@ function renderRemarkRow(
 
 function screenMyRemarks(): HTMLElement {
   const exportBtn = h('button', {
-    class: 'iconbtn',
+    class: 'fab-left',
     title: 'Экспорт замечаний',
     text: '⤓',
     onclick: () => void exportUserRemarksXlsx(state.userRemarks).then((bytes) => downloadFile(bytes, 'Мои замечания.xlsx')),
@@ -676,7 +618,7 @@ function screenMyRemarks(): HTMLElement {
   return screenFrame({
     title: 'Мои замечания',
     back: true,
-    actions: [exportBtn],
+    fabLeft: exportBtn,
     content,
     searchKind: 'remarks',
     onAdd: { kind: 'modal', open: () => openRemarkModal({ mode: 'new' }) },
@@ -808,6 +750,78 @@ function openRemarkModal(opts: ModalOpts): void {
   requestAnimationFrame(() => backEl.classList.add('open'));
 }
 
+// ================= МОДАЛКА ПРАВКИ НАЗВАНИЯ =================
+
+// Правка названия элемента (аудит/здание/узел/лист). Одно поле; «Удалить» — с подтверждением.
+// Каркас тот же, что у модалки замечания (§6.8). onDelete — «сырое» удаление (мутация + back).
+function openNameModal(o: {
+  name: string;
+  onSave: (name: string) => void;
+  onDelete: () => void;
+  deleteMessage: string;
+}): void {
+  const input = h('input', { class: 'field-input', value: o.name }) as HTMLInputElement;
+
+  const saveBtn = h('button', { class: 'save', text: 'Сохранить' }) as HTMLButtonElement;
+  const syncSave = () => { saveBtn.disabled = normalize(input.value) === ''; };
+  input.addEventListener('input', syncSave);
+
+  const delBtn = h('button', { class: 'delete', text: 'Удалить' });
+
+  const backEl = h('div', { class: 'modal-back' });
+  const close = () => backEl.remove();
+
+  saveBtn.addEventListener('click', () => {
+    const name = normalize(input.value);
+    if (!name) return;
+    o.onSave(name);
+    close();
+    rerender();
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!saveBtn.disabled) saveBtn.click(); } });
+
+  delBtn.addEventListener('click', () => confirmDelete(o.deleteMessage, () => { close(); o.onDelete(); }));
+
+  const modal = h('div', { class: 'modal' }, [
+    h('div', { class: 'modal__head' }, [
+      h('button', { text: 'Отмена', onclick: close }),
+      h('b', { text: 'Название' }),
+      h('span'),
+    ]),
+    h('div', { class: 'modal__body' }, [
+      h('div', { class: 'mlabel', text: 'Название' }),
+      input,
+    ]),
+    h('div', { class: 'modal__foot' }, [delBtn, saveBtn]),
+  ]);
+  backEl.append(modal);
+  backEl.addEventListener('click', (e) => { if (e.target === backEl) close(); });
+  document.body.append(backEl);
+  syncSave();
+  requestAnimationFrame(() => backEl.classList.add('open'));
+}
+
+// ================= ВЫПАДАЮЩЕЕ МЕНЮ =================
+
+// Поповер у кнопки-якоря. Прозрачный бэкдроп ловит клик мимо и «Назад». Раскрытие — вверх/вниз
+// в зависимости от того, где якорь (для нижнего FAB — вверх); по горизонтали выравниваем по левому
+// краю якоря с клампом к экрану.
+function openMenu(anchor: HTMLElement, items: { label: string; onClick: () => void }[]): void {
+  const backEl = h('div', { class: 'menu-back' });
+  const close = () => backEl.remove();
+  const menu = h('div', { class: 'menu' }, items.map((it) =>
+    h('button', { text: it.label, onclick: () => { close(); it.onClick(); } }),
+  ));
+  const r = anchor.getBoundingClientRect();
+  if (r.top > window.innerHeight / 2) menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+  else menu.style.top = `${r.bottom + 6}px`;
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 8 - 220))}px`;
+  backEl.append(menu);
+  backEl.addEventListener('click', (e) => { if (e.target === backEl) close(); });
+  document.body.append(backEl);
+  requestAnimationFrame(() => backEl.classList.add('open'));
+}
+
 // ================= ДИАЛОГ ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ (§6.9) =================
 
 function confirmDelete(message: string, onConfirm: () => void): void {
@@ -847,11 +861,11 @@ function pickXlsxFile(onPick: (file: File) => void): void {
   input.click();
 }
 
-function runCatalogUpdate(icon: HTMLElement): void {
+function runCatalogUpdate(icon?: HTMLElement): void {
   pickXlsxFile((file) => void applyCatalogFile(icon, file));
 }
 
-async function applyCatalogFile(icon: HTMLElement, file: File): Promise<void> {
+async function applyCatalogFile(icon: HTMLElement | undefined, file: File): Promise<void> {
   const backEl = h('div', { class: 'alert-back open' });
   const body = h('div', { class: 'alert__body' });
   const acts = h('div', { class: 'alert__acts' });
@@ -860,7 +874,7 @@ async function applyCatalogFile(icon: HTMLElement, file: File): Promise<void> {
   document.body.append(backEl);
   const close = () => backEl.remove();
 
-  icon.classList.add('spinning');
+  icon?.classList.add('spinning');
   body.append(h('div', { class: 'spin' }), h('p', { text: 'Чтение каталога…' }));
   let res: UpdateResult;
   try {
@@ -868,7 +882,7 @@ async function applyCatalogFile(icon: HTMLElement, file: File): Promise<void> {
   } catch {
     res = { ok: false, errors: [{ kind: 'file', message: 'Не удалось прочитать файл.' }] };
   }
-  icon.classList.remove('spinning');
+  icon?.classList.remove('spinning');
 
   clear(body); clear(acts); acts.hidden = false;
   if (res.ok) {
