@@ -169,7 +169,8 @@ function screenFrame(opts: FrameOpts): HTMLElement {
   // --- поиск ---
   const runFilter = () => applySearchFilter(screen, searchInput, searchKind);
   searchInput.addEventListener('input', runFilter);
-  lupa.addEventListener('click', () => { screen.classList.add('searching'); searchInput.focus(); });
+  // preventScroll — чтобы iOS не подкручивал страницу к полю (иначе поле «прыгает» вверх, потом вниз).
+  lupa.addEventListener('click', () => { screen.classList.add('searching'); searchInput.focus({ preventScroll: true }); });
   const closeSearch = () => { screen.classList.remove('searching'); searchInput.value = ''; runFilter(); searchInput.blur(); };
   searchCancel.addEventListener('click', closeSearch);
 
@@ -192,7 +193,7 @@ function screenFrame(opts: FrameOpts): HTMLElement {
       cancelAdd = () => { cancelled = true; finish(); };
       addPill.addEventListener('click', () => {
         addInput.value = ''; done = false; cancelled = false;
-        screen.classList.add('adding'); addInput.focus();
+        screen.classList.add('adding'); addInput.focus({ preventScroll: true });
       });
       addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addInput.blur(); } });
       addInput.addEventListener('blur', finish);

@@ -45,6 +45,7 @@ body {
    src/viewport.ts из visualViewport (height + offsetTop). Фолбэк — на весь экран. */
 #app { position: fixed; top: 0; left: 0; right: 0; height: 100%; max-width: 560px; margin: 0 auto;
   display: flex; flex-direction: column;
+  transition: transform .2s ease-out; /* сглаживает остаточный вертикальный сдвиг при клавиатуре */
   border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 
 /* ================= КАРКАС ЭКРАНА ================= */

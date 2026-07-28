@@ -12,12 +12,20 @@ export function installViewportFix(): void {
   const root = document.getElementById('app');
   if (!vv || !root) return; // старые движки — остаётся CSS-фолбэк (fixed, height: 100%)
 
-  const apply = () => {
+  const set = () => {
     root.style.height = `${vv.height}px`;
     root.style.transform = `translateY(${vv.offsetTop}px)`;
+  };
+  // Во время анимации клавиатуры события сыпятся пачками — коалесим в один кадр, чтобы не
+  // дёргать layout по нескольку раз и не дробить движение (иначе «дёрганая» анимация).
+  let scheduled = false;
+  const apply = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; set(); });
   };
 
   vv.addEventListener('resize', apply);
   vv.addEventListener('scroll', apply); // iOS двигает visualViewport при фокусе — пересчитываем
-  apply();
+  set();
 }
