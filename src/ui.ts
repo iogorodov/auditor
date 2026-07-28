@@ -37,7 +37,19 @@ export function startUI(root: HTMLElement): void {
   // остаётся /auditor/). Системная/аппаратная «Назад» приходит через popstate.
   history.replaceState({ depth: stack.length }, '');
   window.addEventListener('popstate', onPopState);
+  window.addEventListener('keydown', onKeydown);
   render();
+}
+
+// Esc закрывает верхний диалог — как клик по подложке (модалка правки/замечания, подтверждение,
+// меню), то есть без сохранения. Информационный диалог без закрытия по клику мимо (обновление
+// каталога) не трогаем — только его кнопки. Оверлеев нет — сворачиваем нижний бар (поиск/добавление).
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'Escape') return;
+  const overlays = document.querySelectorAll<HTMLElement>('.modal-back, .alert-back, .menu-back');
+  const top = overlays[overlays.length - 1];
+  if (top) { e.preventDefault(); top.click(); return; }
+  if (activeCloseBars()) e.preventDefault();
 }
 
 // Системная «Назад»/«Вперёд». Сначала гасим открытый оверлей (модалка/диалог/бар), «съедая» шаг.

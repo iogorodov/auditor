@@ -108,6 +108,16 @@ test('правка названия через модалку ✎', async ({ pag
   await expect(page.locator('.modal-back.open')).toBeVisible();
   await expect(page.locator('.modal .field-input')).toHaveValue('Аудит 1');
 
+  // Esc закрывает диалог без сохранения: заголовок не меняется.
+  await page.locator('.modal .field-input').fill('Зря введённое');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.modal-back')).toHaveCount(0);
+  await expect(page.locator(ttl)).toHaveText('Аудит 1');
+
+  // Снова ✎ — значение прежнее (правка не сохранилась).
+  await page.getByTitle('Изменить название').click();
+  await expect(page.locator('.modal .field-input')).toHaveValue('Аудит 1');
+
   // Пустое имя → «Сохранить» недоступно.
   await page.locator('.modal .field-input').fill('');
   await expect(page.locator('.modal .save')).toBeDisabled();
