@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "bun --port 8008 ./index.html",
-    "build": "rm -rf dist && bun build ./index.html --outdir dist --minify",
+    "build": "bun run scripts/build.ts",
     "test": "bun test",
     "test:e2e": "playwright test"
   },
