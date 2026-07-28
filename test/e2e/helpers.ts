@@ -33,17 +33,28 @@ export async function updateCatalog(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Закрыть' }).click();
 }
 
-const add = (page: Page) => page.getByRole('button', { name: 'Добавить' }).click();
-const fillName = (page: Page, value: string) => page.locator('.namebar input').fill(value);
+// «Добавить» (в заголовке секции) → inline-строка → ввод имени → Enter (коммит).
+export async function commitInline(page: Page, value: string): Promise<void> {
+  await page.getByRole('button', { name: 'Добавить' }).click();
+  const input = page.locator('.row--input input');
+  await input.fill(value);
+  await input.press('Enter');
+}
+
+// Добавить элемент inline и войти в него (тап по строке).
+export async function addAndOpen(page: Page, value: string): Promise<void> {
+  await commitInline(page, value);
+  await page.locator('li.row').filter({ hasText: value }).first().click();
+}
 
 // Быстрый путь: каталог загружен → создан аудит → здание → экземпляр «Помещение» → «Щит»,
 // возвращаемся на экране замечаний листа.
 export async function gotoNewLeaf(page: Page): Promise<void> {
   await page.goto('/');
   await updateCatalog(page);
-  await add(page); await fillName(page, 'Аудит');
-  await add(page); await fillName(page, 'Здание');
-  await add(page); await fillName(page, 'Помещение 1');
-  await add(page); await fillName(page, 'Щит 1');
+  await addAndOpen(page, 'Аудит');
+  await addAndOpen(page, 'Здание');
+  await addAndOpen(page, 'Помещение 1');
+  await addAndOpen(page, 'Щит 1');
   await expect(page.locator('.row--category').first()).toBeVisible();
 }

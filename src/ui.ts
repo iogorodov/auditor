@@ -14,21 +14,18 @@ import { state, persistAudits, persistUserRemarks, persistCatalog, touchAudit, o
 
 // ================= НАВИГАЦИЯ =================
 
-// isNew — экран открыт кнопкой «Добавить»: «назад» с пустого (без имени и содержимого) нового
-// элемента отменяет создание вместо блокировки (§7).
+// Элементы создаются inline-строкой прямо в списке (см. startInlineAdd) — пустой узел в модель
+// не попадает, поэтому «нового пустого» экрана больше нет.
 type Route =
   | { kind: 'audits' }
   | { kind: 'myremarks' }
-  | { kind: 'audit'; audit: Audit; isNew?: boolean }
-  | { kind: 'building'; audit: Audit; building: AuditBuilding; isNew?: boolean }
-  | { kind: 'l1'; audit: Audit; building: AuditBuilding; node: AuditLevel1Node; slotName: string; fixed: boolean; isNew?: boolean }
-  | { kind: 'leaf'; audit: Audit; building: AuditBuilding; l1: AuditLevel1Node; l1SlotName: string; node: AuditLeafNode; slotName: string; fixed: boolean; isNew?: boolean };
+  | { kind: 'audit'; audit: Audit }
+  | { kind: 'building'; audit: Audit; building: AuditBuilding }
+  | { kind: 'l1'; audit: Audit; building: AuditBuilding; node: AuditLevel1Node; slotName: string; fixed: boolean }
+  | { kind: 'leaf'; audit: Audit; building: AuditBuilding; l1: AuditLevel1Node; l1SlotName: string; node: AuditLeafNode; slotName: string; fixed: boolean };
 
 let app: HTMLElement;
 const stack: Route[] = [{ kind: 'audits' }];
-// Одноразовый флаг: после перехода на свежесозданный экран фокусируем поле «Название»,
-// чтобы сразу открылась клавиатура (фокус — синхронно в жесте клика, иначе iOS её не покажет).
-let focusNameOnRender = false;
 
 export function startUI(root: HTMLElement): void {
   app = root;
@@ -50,48 +47,14 @@ function showPersistError(): void {
 
 function navTo(route: Route): void {
   if (!canLeave()) return; // уход вглубь тоже требует заданного имени (§7)
-  if ('isNew' in route && route.isNew) focusNameOnRender = true;
   stack.push(route);
   render();
 }
 
 function back(): void {
-  if (cancelNewIfUntouched(stack[stack.length - 1]!)) return;
   if (!canLeave()) return;
   if (stack.length > 1) stack.pop();
   render();
-}
-
-// «Назад» со свежесозданного элемента без имени и без содержимого = отмена создания:
-// элемент убирается из модели, экран закрывается (§7).
-function cancelNewIfUntouched(route: Route): boolean {
-  switch (route.kind) {
-    case 'audit':
-      if (!route.isNew || normalize(route.audit.name) || route.audit.buildings.length) return false;
-      state.audits = state.audits.filter((a) => a !== route.audit);
-      persistAudits();
-      break;
-    case 'building':
-      if (!route.isNew || normalize(route.building.name) || route.building.nodes.length) return false;
-      route.audit.buildings = route.audit.buildings.filter((b) => b !== route.building);
-      touchAudit(route.audit);
-      break;
-    case 'l1':
-      if (!route.isNew || normalize(route.node.name) || route.node.nodes.length) return false;
-      route.building.nodes = route.building.nodes.filter((n) => n !== route.node);
-      touchAudit(route.audit);
-      break;
-    case 'leaf':
-      if (!route.isNew || normalize(route.node.name) || route.node.remarks.length) return false;
-      route.l1.nodes = route.l1.nodes.filter((n) => n !== route.node);
-      touchAudit(route.audit);
-      break;
-    default:
-      return false;
-  }
-  stack.pop();
-  render();
-  return true;
 }
 
 // Уход с экрана запрещён, пока обязательное имя не задано (§7).
@@ -109,10 +72,6 @@ function render(): void {
   const route = stack[stack.length - 1]!;
   clear(app);
   app.append(renderRoute(route));
-  if (focusNameOnRender) {
-    focusNameOnRender = false;
-    app.querySelector<HTMLInputElement>('.namebar input[data-required]')?.focus();
-  }
 }
 
 function rerender(): void {
@@ -137,7 +96,6 @@ interface FrameOpts {
   back?: boolean;
   actions?: HTMLElement[];
   content: (Node | null)[];
-  onAdd?: () => void;
   searchKind?: 'list' | 'remarks';
 }
 
@@ -150,24 +108,51 @@ function screenFrame(opts: FrameOpts): HTMLElement {
 
   const content = h('div', { class: 'screen__content' }, opts.content);
 
-  // Плавающие кнопки поверх контента (выделенного футера нет): «Добавить» по центру,
-  // небольшой «Поиск» справа. По «Поиск» кнопки прячутся и снизу появляется поле ввода.
+  // Внизу-справа — только круглая кнопка поиска (лупа). По ней снизу раскрывается поле ввода
+  // (+ «Отмена»). Кнопки «Добавить» здесь нет — добавление живёт в заголовках секций.
   const searchInput = h('input', { placeholder: 'Поиск' }) as HTMLInputElement;
   const clearBtn = h('button', { class: 'clear', text: '✕' });
   const searchWrap = h('span', { class: 'search' }, [searchInput, clearBtn]);
   const cancelBtn = h('button', { class: 'search-cancel', text: 'Отмена' });
   const searchBar = h('div', { class: 'searchbar' }, [searchWrap, cancelBtn]);
 
-  const toggleBtn = h('button', { class: 'fab-search', title: 'Поиск', text: 'Поиск' });
-  const addBtn = opts.onAdd ? h('button', { class: 'fab-add', text: 'Добавить', onclick: opts.onAdd }) : null;
-  const controls = h('div', { class: 'screen__controls' }, [
-    h('div', { class: 'fab-bar' }, [addBtn, toggleBtn]),
-    searchBar,
-  ]);
+  const toggleBtn = h('button', { class: 'fab-search', title: 'Поиск', text: '⌕' });
+  const controls = h('div', { class: 'screen__controls' }, [toggleBtn, searchBar]);
 
   const screen = h('section', { class: 'screen' }, [header, content, controls]);
   wireSearch({ screen, controls, input: searchInput, clearBtn, wrap: searchWrap, toggleBtn, cancelBtn, kind: opts.searchKind ?? 'list' });
   return screen;
+}
+
+// ================= СЕКЦИИ И INLINE-ДОБАВЛЕНИЕ =================
+
+// Заголовок секции добавляемых элементов: подпись слева, кнопка «Добавить» справа.
+function sectionHeader(label: string, onAdd?: () => void): HTMLElement {
+  return h('div', { class: 'section-label' }, [
+    h('span', { text: label }),
+    onAdd ? h('button', { class: 'section-add', text: 'Добавить', onclick: onAdd }) : null,
+  ]);
+}
+
+// Inline-добавление: вставляет строку-input в список и фокусирует её. По Enter/расфокусу пустая
+// строка исчезает бесследно, непустая — создаёт элемент (create) и перерисовывает экран (§7:
+// пустой узел в модель не попадает). По одному за раз — без авто-строки для следующего.
+function startInlineAdd(listEl: HTMLElement, create: (name: string) => void, atStart = false): void {
+  const existing = listEl.querySelector<HTMLInputElement>('.row--input input');
+  if (existing) { existing.focus(); return; }
+  const input = h('input', { placeholder: 'Название' }) as HTMLInputElement;
+  const li = h('li', { class: 'row row--input' }, [h('div', { class: 'row__main' }, [input])]);
+  if (atStart) listEl.prepend(li); else listEl.append(li);
+  let done = false;
+  const commit = () => {
+    if (done) return; // Enter → blur, чтобы не сработать дважды
+    done = true;
+    const name = normalize(input.value);
+    if (name) { create(name); rerender(); } else { li.remove(); }
+  };
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+  input.addEventListener('blur', commit);
+  input.focus();
 }
 
 // ================= СТРОКИ =================
@@ -294,7 +279,9 @@ function makeSortable<T>(ul: HTMLElement, allNodes: T[], write: (next: T[]) => v
     handle: '.row__handle',
     animation: 150,
     onEnd: () => {
-      const ordered = [...ul.querySelectorAll<HTMLElement>('li')].map((li) => (li as unknown as { __node: T }).__node);
+      const ordered = [...ul.querySelectorAll<HTMLElement>('li')]
+        .map((li) => (li as unknown as { __node?: T }).__node)
+        .filter((n): n is T => n != null); // пропускаем возможную inline-строку добавления
       write(applyReorder(allNodes, ordered));
     },
   });
@@ -311,22 +298,18 @@ function screenAudits(): HTMLElement {
     navRow({ title: a.name || '(без названия)', sub: formatDate(a.time), count: countAudit(a), onClick: () => navTo({ kind: 'audit', audit: a }) }),
   ));
 
+  const addAudit = () => startInlineAdd(list, (name) => {
+    state.audits.push({ id: uid(), name, time: nowSec(), buildings: [] });
+    persistAudits();
+  }, true); // новый аудит — самый свежий, встаёт в начало списка
+
   const content: (Node | null)[] = [];
   if (!state.catalog) content.push(h('div', { class: 'empty-note', text: 'Каталог пуст. Нажмите ↻ и выберите файл каталога (.xlsx) с листами «Иерархия» и «Замечания».' }));
+  content.push(sectionHeader('Аудиты', addAudit));
   if (audits.length === 0) content.push(h('div', { class: 'empty-note', text: 'Аудитов пока нет. Нажмите «Добавить».' }));
   content.push(list);
 
-  return screenFrame({
-    title: 'АУДИТОР',
-    actions: [star, refresh],
-    content,
-    onAdd: () => {
-      const audit: Audit = { id: uid(), name: '', time: nowSec(), buildings: [] };
-      state.audits.push(audit);
-      persistAudits();
-      navTo({ kind: 'audit', audit, isNew: true });
-    },
-  });
+  return screenFrame({ title: 'АУДИТОР', actions: [star, refresh], content });
 }
 
 // ================= ЭКРАН: АУДИТ (список зданий, §6.4) =================
@@ -361,6 +344,11 @@ function screenAudit(audit: Audit): HTMLElement {
   }));
   makeSortable(list, audit.buildings, (next) => { audit.buildings = next; touchAudit(audit); rerender(); });
 
+  const addBuilding = () => startInlineAdd(list, (name) => {
+    audit.buildings.push({ name, nodes: [] });
+    touchAudit(audit);
+  });
+
   return screenFrame({
     title: 'АУДИТ',
     back: true,
@@ -376,16 +364,10 @@ function screenAudit(audit: Audit): HTMLElement {
           back();
         }),
       }),
-      h('div', { class: 'section-label', text: 'Здания' }),
-      audit.buildings.length ? list : h('div', { class: 'empty-note', text: 'Зданий пока нет.' }),
+      sectionHeader('Здания', addBuilding),
+      audit.buildings.length ? null : h('div', { class: 'empty-note', text: 'Зданий пока нет.' }),
+      list, // всегда в DOM (может быть пустым) — сюда встаёт inline-строка добавления
     ],
-    onAdd: () => {
-      if (!canLeave()) return;
-      const building: AuditBuilding = { name: '', nodes: [] };
-      audit.buildings.push(building);
-      touchAudit(audit);
-      navTo({ kind: 'building', audit, building, isNew: true });
-    },
   });
 }
 
@@ -414,12 +396,7 @@ function screenBuilding(audit: Audit, building: AuditBuilding): HTMLElement {
   const entries = resolveLevel1(building.nodes, tmpl);
   appendLevel1(content, entries, audit, building);
 
-  return screenFrame({
-    title: 'ЗДАНИЕ',
-    back: true,
-    content,
-    onAdd: () => addInstanceL1(audit, building, tmpl),
-  });
+  return screenFrame({ title: 'ЗДАНИЕ', back: true, content });
 }
 
 // Рендер записей уровня 1: фикс-узлы строками, изменяемая группа — подпись + drag-список.
@@ -436,7 +413,11 @@ function appendLevel1(content: (Node | null)[], entries: LevelEntry<ResolvedL1>[
         return li;
       }));
       makeSortable(ul, building.nodes, (next) => { building.nodes = next; touchAudit(audit); rerender(); });
-      groups.push(h('div', {}, [h('div', { class: 'section-label', text: e.slotName }), ul]));
+      const addNode = () => startInlineAdd(ul, (name) => {
+        building.nodes.push({ name, nodes: [] });
+        touchAudit(audit);
+      });
+      groups.push(h('div', {}, [sectionHeader(e.slotName, addNode), ul]));
     }
   }
   if (fixedRows.length) content.push(h('ul', { class: 'list' }, fixedRows));
@@ -453,16 +434,6 @@ function openL1(audit: Audit, building: AuditBuilding, node: ResolvedL1): void {
     persistAudits();
   }
   navTo({ kind: 'l1', audit, building, node: real, slotName: node.slotName, fixed: node.type === 'fixed' });
-}
-
-function addInstanceL1(audit: Audit, building: AuditBuilding, tmpl: HierarchyTemplate): void {
-  if (!canLeave()) return;
-  const varSlot = tmpl.level1.find((s) => s.type === 'variable');
-  if (!varSlot) return;
-  const node: AuditLevel1Node = { name: '', nodes: [] };
-  building.nodes.push(node);
-  touchAudit(audit);
-  navTo({ kind: 'l1', audit, building, node, slotName: varSlot.name, fixed: false, isNew: true });
 }
 
 // ================= ЭКРАН: УЗЕЛ УРОВНЯ 1 (список листьев, §6.6) =================
@@ -501,26 +472,17 @@ function screenL1(route: Route & { kind: 'l1' }): HTMLElement {
         return li;
       }));
       makeSortable(ul, node.nodes, (next) => { node.nodes = next; touchAudit(audit); rerender(); });
-      groups.push(h('div', {}, [h('div', { class: 'section-label', text: e.slotName }), ul]));
+      const addLeaf = () => startInlineAdd(ul, (name) => {
+        node.nodes.push({ name, remarks: [] });
+        touchAudit(audit);
+      });
+      groups.push(h('div', {}, [sectionHeader(e.slotName, addLeaf), ul]));
     }
   }
   if (fixedRows.length) content.push(h('ul', { class: 'list' }, fixedRows));
   content.push(...groups);
 
-  return screenFrame({
-    title: fixed ? slotName : (node.name || 'Узел'),
-    back: true,
-    content,
-    onAdd: () => {
-      if (!canLeave()) return;
-      const varSlot = leafSlots.find((s) => s.type === 'variable');
-      if (!varSlot) return;
-      const leaf: AuditLeafNode = { name: '', remarks: [] };
-      node.nodes.push(leaf);
-      touchAudit(audit);
-      navTo({ kind: 'leaf', audit, building, l1: node, l1SlotName: slotName, node: leaf, slotName: varSlot.name, fixed: false, isNew: true });
-    },
-  });
+  return screenFrame({ title: fixed ? slotName : (node.name || 'Узел'), back: true, content });
 }
 
 function openLeaf(audit: Audit, building: AuditBuilding, l1: AuditLevel1Node, l1SlotName: string, leaf: ResolvedLeaf): void {
@@ -561,16 +523,11 @@ function screenLeaf(route: Route & { kind: 'leaf' }): HTMLElement {
     parentSlotName: l1SlotName,
   });
 
+  content.push(sectionHeader('Замечания', () => openRemarkModal({ mode: 'new', checkInLeaf: node, audit })));
   if (cats.length === 0) content.push(h('div', { class: 'empty-note', text: 'Нет применимых замечаний. Нажмите «Добавить».' }));
   for (const cat of cats) content.push(renderCategoryBlock(cat.name, cat.items, cat.selected, cat.total, node, audit));
 
-  return screenFrame({
-    title: fixed ? slotName : (node.name || 'Лист'),
-    back: true,
-    content,
-    searchKind: 'remarks',
-    onAdd: () => openRemarkModal({ mode: 'new', checkInLeaf: node, audit }),
-  });
+  return screenFrame({ title: fixed ? slotName : (node.name || 'Лист'), back: true, content, searchKind: 'remarks' });
 }
 
 // Блок категории: сворачиваемая строка + группа замечаний с чекбоксами.
@@ -641,6 +598,7 @@ function screenMyRemarks(): HTMLElement {
   }
   const cats = [...byCat.keys()].sort(categoryCompare);
 
+  content.push(sectionHeader('Замечания', () => openRemarkModal({ mode: 'new' })));
   if (state.userRemarks.length === 0) content.push(h('div', { class: 'empty-note', text: 'Пользовательских замечаний пока нет.' }));
 
   for (const cat of cats) {
@@ -664,14 +622,7 @@ function screenMyRemarks(): HTMLElement {
     content.push(h('div', { class: 'cat-block' }, [h('ul', { class: 'list' }, [catRow]), group]));
   }
 
-  return screenFrame({
-    title: 'Мои замечания',
-    back: true,
-    actions: [exportBtn],
-    content,
-    searchKind: 'remarks',
-    onAdd: () => openRemarkModal({ mode: 'new' }),
-  });
+  return screenFrame({ title: 'Мои замечания', back: true, actions: [exportBtn], content, searchKind: 'remarks' });
 }
 
 // ================= МОДАЛКА ЗАМЕЧАНИЯ (§6.8) =================

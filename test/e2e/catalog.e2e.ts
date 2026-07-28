@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { chooseCatalogFile, makeCatalogXlsx, updateCatalog } from './helpers';
+import { addAndOpen, chooseCatalogFile, makeCatalogXlsx, updateCatalog } from './helpers';
 
 // §5 (V2): успешное обновление каталога из xlsx-файла.
 test('обновление каталога: успех', async ({ page }) => {
@@ -8,10 +8,8 @@ test('обновление каталога: успех', async ({ page }) => {
   await updateCatalog(page);
 
   // После успеха иерархия доступна — на экране здания видны шаблонные узлы.
-  await page.getByRole('button', { name: 'Добавить' }).click();
-  await page.locator('.namebar input').fill('Аудит');
-  await page.getByRole('button', { name: 'Добавить' }).click();
-  await page.locator('.namebar input').fill('Здание');
+  await addAndOpen(page, 'Аудит');
+  await addAndOpen(page, 'Здание');
   await expect(page.locator('.row__title', { hasText: 'Документация' })).toBeVisible();
 });
 
