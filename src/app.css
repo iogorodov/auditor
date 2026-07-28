@@ -67,7 +67,7 @@ body {
 .search { flex: 1; position: relative; display: flex; align-items: center; }
 .search::before { content: "⌕"; position: absolute; left: 10px; color: var(--muted); font-size: 30px; font-weight: 700; pointer-events: none; }
 .search input { width: 100%; height: var(--tap); border: 1px solid var(--line-strong); background: var(--surface);
-  color: var(--text); border-radius: var(--radius); padding: 0 32px 0 42px; font: inherit; }
+  color: var(--text); border-radius: var(--radius); padding: 0 32px 0 42px; font: inherit; font-size: 16px; }
 .search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .search .clear { position: absolute; right: 8px; width: 22px; height: 22px; border-radius: 50%;
   border: none; background: var(--line-strong); color: var(--bg); cursor: pointer; display: none; place-items: center; font-size: 13px; }
@@ -131,8 +131,9 @@ body {
 .modal__body { padding: 14px 16px; overflow-y: auto; }
 .mlabel { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 5px; }
 .mlabel:first-child { margin-top: 0; }
+/* font-size: 16px — минимум, при котором iOS Safari не зумит инпут при фокусе. */
 .modal textarea, .modal .cat-input { width: 100%; border: 1px solid var(--line-strong); background: var(--surface);
-  color: var(--text); border-radius: var(--radius); padding: 10px 12px; font: inherit; font-size: 15px; }
+  color: var(--text); border-radius: var(--radius); padding: 10px 12px; font: inherit; font-size: 16px; }
 .modal textarea { min-height: 66px; resize: vertical; }
 .checks { border-top: 1px solid var(--line); }
 .checks label { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); font-size: 15px; cursor: pointer; }
